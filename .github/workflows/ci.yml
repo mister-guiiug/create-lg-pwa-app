@@ -1,0 +1,66 @@
+# CI du générateur. Elle ne délègue PAS au réutilisable de la famille : celui-ci
+# suppose une PWA — build Vite, budget de poids, pwa-doctor. Ce dépôt n'a ni
+# build ni dépendance au socle, et c'est sa propriété principale : il doit
+# s'installer là où aucun `.npmrc` n'existe encore.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Format et tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci --no-audit --no-fund
+      - run: npm run format:check
+      - run: npm test
+
+  # LA VRAIE PREUVE : le générateur tire le squelette RÉEL et en sort une
+  # application. Les tests unitaires éprouvent la substitution sur un faux
+  # squelette ; ce job éprouve l'accord entre les deux dépôts — c'est lui qui
+  # rougit le jour où le squelette change de forme.
+  engendrer:
+    name: Engendrer une application depuis le squelette
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Engendrer
+        run: node bin/create-lg-pwa-app.mjs miss-essai-ci --no-install --dir /tmp/engendree
+
+      # Le README cite le squelette comme ORIGINE, en lien : c'est voulu, et
+      # c'est la seule occurrence tolérée.
+      - name: Aucune trace du squelette, et l'identité posée partout
+        run: |
+          reste=$(grep -rIl 'pwa-starter-kit' /tmp/engendree \
+            --exclude-dir=.git --exclude=README.md || true)
+          if [ -n "$reste" ]; then
+            echo "::error::le nom du squelette subsiste dans : $reste"
+            exit 1
+          fi
+          grep -q '"name": "miss-essai-ci"' /tmp/engendree/package.json
+          grep -q "APP_ID = 'miss-essai-ci'" /tmp/engendree/vite.config.ts
+          grep -q "APP_ID = 'miss-essai-ci'" /tmp/engendree/src/app/links.ts
+          echo "✅ identité substituée, README réécrit"
