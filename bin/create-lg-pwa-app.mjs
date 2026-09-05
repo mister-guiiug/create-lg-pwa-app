@@ -162,27 +162,46 @@ try {
   }
 
   // ── 4. Le premier commit ─────────────────────────────────────────────────
+  //
+  // LE COMMIT EST UN CONFORT, PAS LE LIVRABLE. Une machine neuve — ou un
+  // runner de CI — n'a pas forcément d'identité git configurée, et `git
+  // commit` y échoue en « empty ident name ». Perdre une génération réussie
+  // pour cela serait absurde : on prévient, et on rend la main.
+  let commitFait = false;
   if (dispo('git')) {
-    console.log('· dépôt git et premier commit');
-    run('git', ['init', '-q', '-b', 'main'], { cwd: cible });
-    run('git', ['add', '-A'], { cwd: cible });
-    run(
-      'git',
-      [
-        'commit',
-        '-q',
-        '-m',
-        `feat: ${titre}, depuis le squelette de la famille`,
-        '-m',
-        `Né de ${DEPOT_SQUELETTE}@${ref} : la composition, les décisions (docs/adr/) et la conformité au parc viennent avec. Reste le métier.`,
-      ],
-      { cwd: cible }
-    );
+    try {
+      console.log('· dépôt git et premier commit');
+      run('git', ['init', '-q', '-b', 'main'], { cwd: cible });
+      run('git', ['add', '-A'], { cwd: cible });
+      run(
+        'git',
+        [
+          'commit',
+          '-q',
+          '-m',
+          `feat: ${titre}, depuis le squelette de la famille`,
+          '-m',
+          `Né de ${DEPOT_SQUELETTE}@${ref} : la composition, les décisions (docs/adr/) et la conformité au parc viennent avec. Reste le métier.`,
+        ],
+        { cwd: cible }
+      );
+      commitFait = true;
+    } catch (cause) {
+      console.warn(
+        `⚠ premier commit impossible (${cause.message.split('\n')[0]}).\n` +
+          '  L’application est complète ; configurer git puis committer à la main.'
+      );
+    }
   }
 
   // ── 5. GitHub ────────────────────────────────────────────────────────────
   if (drapeau('publish')) {
     if (!dispo('gh')) throw new Error('--publish exige la commande gh');
+    if (!commitFait) {
+      throw new Error(
+        '--publish exige un premier commit : configurer git (user.name, user.email) et relancer'
+      );
+    }
     console.log('· création du dépôt et poussée');
     run(
       'gh',
