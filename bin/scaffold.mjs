@@ -47,6 +47,40 @@ export function validerId(id) {
 }
 
 /**
+ * La référence du squelette à tirer.
+ *
+ * DEMANDÉE, SINON LA DERNIÈRE ÉTIQUETTE, SINON `main`. Deux naissances à une
+ * semaine d'écart partaient de deux squelettes différents sans que rien ne le
+ * dise autrement que par un SHA dans le premier commit. Une étiquette est une
+ * version qu'on peut nommer, reproduire, et dont on sait ce qu'elle contient ;
+ * `main` reste possible par `--from main`, pour qui veut la pointe.
+ *
+ * @param {string | null | undefined} demande  `--from`, s'il est donné.
+ * @param {Array<string | { name?: string }>} etiquettes  Celles du dépôt, dans
+ *   n'importe quel ordre — l'API ne promet rien sur le leur.
+ * @returns {{ ref: string, origine: 'demandée' | 'étiquette' | 'défaut' }}
+ */
+export function choisirRef(demande, etiquettes = []) {
+  if (demande) return { ref: demande, origine: 'demandée' };
+  const versions = etiquettes
+    .map(t => (typeof t === 'string' ? t : t?.name))
+    .map(nom => {
+      const m = /^v?(\d+)\.(\d+)\.(\d+)$/.exec(nom ?? '');
+      return m
+        ? { nom, cle: [Number(m[1]), Number(m[2]), Number(m[3])] }
+        : null;
+    })
+    .filter(Boolean)
+    .sort(
+      (a, b) =>
+        b.cle[0] - a.cle[0] || b.cle[1] - a.cle[1] || b.cle[2] - a.cle[2]
+    );
+  return versions.length
+    ? { ref: versions[0].nom, origine: 'étiquette' }
+    : { ref: 'main', origine: 'défaut' };
+}
+
+/**
  * Le nom affiché, déduit de l'identifiant : `miss-exemple` → `Miss Exemple`.
  * Déductible ne veut pas dire imposé — l'option `--nom` le remplace.
  */

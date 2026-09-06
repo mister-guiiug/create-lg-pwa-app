@@ -34,14 +34,14 @@ fait pas de bruit, il ne fait rien.
 
 ## Ce qu'il fait
 
-| Étape          | Ce qu'elle règle                                                                   |
-| -------------- | ---------------------------------------------------------------------------------- |
-| Téléchargement | l'archive du squelette à la référence demandée, sans son historique                |
-| Identité       | l'identifiant **et** le nom affiché ; un contrôle refuse la moindre trace restante |
-| README         | réécrit pour la nouvelle application — celui du squelette parle du squelette       |
-| `npm install`  | par **npm 10**, la version du runner                                               |
-| Premier commit | conventionnel, sur `main`                                                          |
-| `--publish`    | dépôt public, poussée, et **Pages activées par un PUT**                            |
+| Étape          | Ce qu'elle règle                                                                                     |
+| -------------- | ---------------------------------------------------------------------------------------------------- |
+| Téléchargement | l'archive du squelette à sa **dernière étiquette** (ou à la référence demandée), sans son historique |
+| Identité       | l'identifiant **et** le nom affiché ; un contrôle refuse la moindre trace restante                   |
+| README         | réécrit pour la nouvelle application — celui du squelette parle du squelette                         |
+| `npm install`  | par **npm 10**, la version du runner                                                                 |
+| Premier commit | conventionnel, sur `main`                                                                            |
+| `--publish`    | dépôt public, poussée, et **Pages activées par un PUT**                                              |
 
 Les deux dernières lignes sont sa vraie valeur. Substituer un nom prend dix
 lignes ; ce que personne n'avait automatisé, ce sont les gestes d'après et
@@ -73,7 +73,7 @@ leurs pièges :
 <id>              nom du dépôt : miss-exemple, mister-exemple
 --nom "<titre>"   nom affiché (défaut : déduit de l'id)
 --description "…" description du paquet et du manifeste
---from <ref>      branche ou tag du squelette (défaut : main)
+--from <ref>      branche ou étiquette du squelette (défaut : sa dernière étiquette, sinon main)
 --dir <chemin>    dossier de sortie (défaut : ./<id>)
 --publish         crée le dépôt GitHub, pousse, active Pages (exige gh)
 --no-install      n'installe pas les dépendances
