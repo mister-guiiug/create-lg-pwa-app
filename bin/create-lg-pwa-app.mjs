@@ -26,6 +26,7 @@ import {
   cpSync,
   existsSync,
   mkdtempSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -33,6 +34,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
   SQUELETTE,
+  choisirRef,
   readme,
   substituer,
   titreDepuisId,
@@ -59,7 +61,7 @@ create-lg-pwa-app — une application de la famille, en une commande.
 
   --nom "<titre>"   nom affiché (défaut : déduit de l'id)
   --description "…" description du paquet et du manifeste
-  --from <ref>      branche ou tag du squelette (défaut : main)
+  --from <ref>      branche ou étiquette du squelette (défaut : sa dernière étiquette, sinon main)
   --dir <chemin>    dossier de sortie (défaut : ./<id>)
   --publish         crée le dépôt GitHub, pousse, active Pages (exige gh)
   --no-install      n'installe pas les dépendances
@@ -81,7 +83,27 @@ if (verdict.horsConvention) {
 const titre = option('nom') ?? titreDepuisId(id);
 const description =
   option('description') ?? `${titre} — application PWA de la famille.`;
-const ref = option('from') ?? 'main';
+/**
+ * Les étiquettes du squelette, ou rien : hors ligne, ou API indisponible, on
+ * retombe sur `main` en le disant — une naissance ne doit pas dépendre d'un
+ * quota d'API.
+ */
+async function etiquettesDuSquelette() {
+  try {
+    const r = await fetch(
+      `https://api.github.com/repos/${DEPOT_SQUELETTE}/tags?per_page=100`,
+      { headers: { accept: 'application/vnd.github+json' } }
+    );
+    return r.ok ? await r.json() : [];
+  } catch {
+    return [];
+  }
+}
+
+const { ref, origine } = choisirRef(
+  option('from'),
+  await etiquettesDuSquelette()
+);
 const cible = resolve(option('dir') ?? id);
 
 if (existsSync(cible)) {
@@ -101,7 +123,14 @@ function run(exe, argv, options = {}) {
 const dispo = exe =>
   spawnSync(exe, ['--version'], { stdio: 'ignore' }).status === 0;
 
-console.log(`\n▶ ${titre} (${id}) — depuis ${DEPOT_SQUELETTE}@${ref}\n`);
+const provenance = {
+  demandée: '--from',
+  étiquette: 'sa dernière étiquette',
+  défaut: 'aucune étiquette publiée : la pointe de main',
+}[origine];
+console.log(
+  `\n▶ ${titre} (${id}) — depuis ${DEPOT_SQUELETTE}@${ref} (${provenance})\n`
+);
 
 // ── 1. Le squelette ────────────────────────────────────────────────────────
 //
@@ -126,10 +155,19 @@ try {
   // de GNU tar, mais pas celui de bsdtar, livré avec Windows 10, qui ne connaît
   // pas cette option. Ne pas écrire de deux-points règle les deux.
   run('tar', ['-xzf', 'squelette.tar.gz'], { cwd: travail });
-  const extrait = join(travail, `${SQUELETTE}-${ref.replace(/\//g, '-')}`);
-  if (!existsSync(extrait)) {
-    throw new Error(`archive inattendue : ${extrait} introuvable`);
+  // LE NOM DU DOSSIER EXTRAIT N'EST PAS CELUI DE LA RÉFÉRENCE. Pour une
+  // branche, GitHub écrit `pwa-starter-kit-main` ; pour une étiquette `v1.0.0`,
+  // il RETIRE le `v` : `pwa-starter-kit-1.0.0`. Le calculer serait parier sur
+  // cette règle ; on lit le seul dossier que l'archive contient.
+  const dossier = readdirSync(travail, { withFileTypes: true }).find(
+    e => e.isDirectory() && e.name.startsWith(`${SQUELETTE}-`)
+  );
+  if (!dossier) {
+    throw new Error(
+      `archive inattendue : aucun dossier ${SQUELETTE}-* après extraction`
+    );
   }
+  const extrait = join(travail, dossier.name);
   // COPIE, PAS DÉPLACEMENT. Le dossier temporaire du système et la cible
   // peuvent vivre sur deux disques différents — cas ordinaire sous Windows,
   // où `%TEMP%` est sur `C:` et les dépôts souvent ailleurs. `rename` y échoue

@@ -19,6 +19,7 @@ import { dirname, join } from 'node:path';
 import {
   SQUELETTE,
   SQUELETTE_TITRE,
+  choisirRef,
   fichiersTexte,
   readme,
   substituer,
@@ -163,4 +164,27 @@ test('le README rendu parle de la nouvelle application, pas du squelette', () =>
   assert.doesNotMatch(texte, /squelette des applications PWA/);
   // Et il rappelle ce qui reste à faire, dont la suppression de l'exemple.
   assert.match(texte, /supprimer.*src\/features\/home/is);
+});
+
+test('la référence : demandée, sinon la dernière étiquette, sinon main', () => {
+  // `--from` l'emporte toujours, étiquettes ou pas.
+  assert.deepEqual(choisirRef('main', [{ name: 'v1.0.0' }]), {
+    ref: 'main',
+    origine: 'demandée',
+  });
+  // L'API ne promet aucun ordre : la plus haute version est choisie, pas la
+  // première rendue — et `v1.10.0` passe avant `v1.9.0`.
+  assert.deepEqual(
+    choisirRef(null, [{ name: 'v1.9.0' }, { name: 'v1.10.0' }, 'v0.9.9']),
+    { ref: 'v1.10.0', origine: 'étiquette' }
+  );
+  // Une étiquette qui n'est pas une version n'est pas un point de départ.
+  assert.deepEqual(choisirRef(undefined, [{ name: 'jalon-1' }, {}]), {
+    ref: 'main',
+    origine: 'défaut',
+  });
+  assert.deepEqual(choisirRef(undefined, []), {
+    ref: 'main',
+    origine: 'défaut',
+  });
 });
