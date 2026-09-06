@@ -145,6 +145,10 @@ console.log(
 // faire dans une application neuve, et le premier commit doit être le sien.
 const travail = mkdtempSync(join(tmpdir(), 'lg-pwa-'));
 const archive = join(travail, 'squelette.tar.gz');
+// Connu après l'installation, cité dans le message final : déclaré HORS du
+// bloc — la première CI qui a construit l'application l'a payé d'un
+// « port is not defined » à la dernière ligne.
+let port = null;
 try {
   console.log('· téléchargement du squelette');
   const url = `https://codeload.github.com/${DEPOT_SQUELETTE}/tar.gz/${ref}`;
@@ -198,7 +202,6 @@ try {
   // `libc` que npm 10 retire : CI rouge au premier push, avec un message qui
   // parle de bindings natifs. C'est le piège le plus coûteux de la naissance
   // d'une application, et il n'a rien d'évident.
-  let port = null;
   if (!drapeau('no-install')) {
     console.log('· npm install (npm 10, la version du runner)');
     run('npx', ['--yes', 'npm@10.9.8', 'install', '--no-audit', '--no-fund'], {
