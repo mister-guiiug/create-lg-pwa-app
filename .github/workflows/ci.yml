@@ -12,6 +12,8 @@ on:
 
 permissions:
   contents: read
+  # Lire le socle sur GitHub Packages, pour construire l'application engendrée.
+  packages: read
 
 jobs:
   validate:
@@ -64,3 +66,15 @@ jobs:
           grep -q "APP_ID = 'miss-essai-ci'" /tmp/engendree/vite.config.ts
           grep -q "APP_ID = 'miss-essai-ci'" /tmp/engendree/src/app/links.ts
           echo "✅ identité substituée, README réécrit"
+
+      # LA PREUVE QUI MANQUAIT : l'application engendrée — pas le squelette —
+      # s'installe, se construit, passe le budget de poids et `pwa-doctor
+      # --strict`. `npm ci` lit le lockfile du squelette, écrit par npm 10 ;
+      # le socle vient de GitHub Packages, que `GITHUB_TOKEN` sait lire.
+      - name: Construire l'application engendrée
+        working-directory: /tmp/engendree
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build

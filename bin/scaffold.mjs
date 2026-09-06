@@ -80,6 +80,69 @@ export function choisirRef(demande, etiquettes = []) {
     : { ref: 'main', origine: 'défaut' };
 }
 
+/** Le port réservé au squelette, que le générateur ne redonne jamais. */
+export const PORT_SQUELETTE = 5240;
+
+/**
+ * Le port de développement d'une application neuve.
+ *
+ * Le catalogue du socle porte un port UNIQUE par app (`devPort`, plage
+ * 5201–5299) et sait rendre le prochain libre (`freeDevPort`). Le générateur
+ * le lit dans le socle INSTALLÉ de l'application engendrée — il n'a pas de
+ * dépendance à lui — et retombe sur le premier port après celui du squelette
+ * quand le socle installé ne connaît pas encore les ports.
+ *
+ * @param {{ freeDevPort?: () => number | null, FAMILY_APPS?: Array<{ devPort?: number }> } | null} catalogue
+ * @returns {{ port: number, origine: 'catalogue' | 'défaut' }}
+ */
+export function choisirPort(catalogue) {
+  const libre = catalogue?.freeDevPort?.();
+  if (Number.isInteger(libre)) return { port: libre, origine: 'catalogue' };
+  return { port: PORT_SQUELETTE + 1, origine: 'défaut' };
+}
+
+/**
+ * Le `.claude/launch.json` d'une application : le serveur de développement,
+ * sur SON port, pour l'aperçu intégré de l'éditeur.
+ */
+export function launchJson(id, port) {
+  return `${JSON.stringify(
+    {
+      version: '0.0.1',
+      configurations: [
+        {
+          name: id,
+          runtimeExecutable: 'npm',
+          runtimeArgs: [
+            'run',
+            'dev',
+            '--',
+            '--port',
+            String(port),
+            '--strictPort',
+          ],
+          port,
+        },
+      ],
+    },
+    null,
+    2
+  )}\n`;
+}
+
+/**
+ * Le port dans `vite.config.ts` du squelette : `devPortOf(APP_ID, 5240)` — le
+ * repli 5240 est celui du squelette, et une app neuve ne doit pas le garder.
+ * Sans ce motif (squelette antérieur), le fichier est rendu tel quel : le
+ * `launch.json` porte alors seul le port, par `--port`.
+ */
+export function remplacerPort(viteConfig, port) {
+  return viteConfig.replace(
+    /devPortOf\(\s*APP_ID\s*,\s*5240\s*\)/,
+    `devPortOf(APP_ID, ${port})`
+  );
+}
+
 /**
  * Le nom affiché, déduit de l'identifiant : `miss-exemple` → `Miss Exemple`.
  * Déductible ne veut pas dire imposé — l'option `--nom` le remplace.
