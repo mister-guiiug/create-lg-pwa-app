@@ -17,11 +17,15 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import {
+  PORT_SQUELETTE,
   SQUELETTE,
   SQUELETTE_TITRE,
+  choisirPort,
   choisirRef,
   fichiersTexte,
+  launchJson,
   readme,
+  remplacerPort,
   substituer,
   titreDepuisId,
   validerId,
@@ -164,6 +168,38 @@ test('le README rendu parle de la nouvelle application, pas du squelette', () =>
   assert.doesNotMatch(texte, /squelette des applications PWA/);
   // Et il rappelle ce qui reste à faire, dont la suppression de l'exemple.
   assert.match(texte, /supprimer.*src\/features\/home/is);
+});
+
+test('le port : le prochain libre du catalogue, sinon celui qui suit le squelette', () => {
+  assert.deepEqual(choisirPort({ freeDevPort: () => 5209 }), {
+    port: 5209,
+    origine: 'catalogue',
+  });
+  // Un socle installé antérieur aux ports : jamais 5240, qui est au squelette.
+  assert.deepEqual(choisirPort(null), {
+    port: PORT_SQUELETTE + 1,
+    origine: 'défaut',
+  });
+  assert.deepEqual(choisirPort({ freeDevPort: () => null }), {
+    port: 5241,
+    origine: 'défaut',
+  });
+});
+
+test('launch.json et vite.config portent le même port, et 5240 ne survit pas', () => {
+  const launch = JSON.parse(launchJson('miss-exemple', 5209));
+  assert.equal(launch.configurations[0].port, 5209);
+  assert.deepEqual(launch.configurations[0].runtimeArgs.slice(-3), [
+    '--port',
+    '5209',
+    '--strictPort',
+  ]);
+  assert.equal(
+    remplacerPort('const DEV_PORT = devPortOf(APP_ID, 5240);', 5209),
+    'const DEV_PORT = devPortOf(APP_ID, 5209);'
+  );
+  // Un squelette sans le motif : rendu tel quel, le launch.json porte le port.
+  assert.equal(remplacerPort('export default {}', 5209), 'export default {}');
 });
 
 test('la référence : demandée, sinon la dernière étiquette, sinon main', () => {

@@ -25,17 +25,23 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import {
   cpSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   SQUELETTE,
+  choisirPort,
   choisirRef,
+  launchJson,
   readme,
+  remplacerPort,
   substituer,
   titreDepuisId,
   validerId,
@@ -64,7 +70,8 @@ create-lg-pwa-app — une application de la famille, en une commande.
   --from <ref>      branche ou étiquette du squelette (défaut : sa dernière étiquette, sinon main)
   --dir <chemin>    dossier de sortie (défaut : ./<id>)
   --publish         crée le dépôt GitHub, pousse, active Pages (exige gh)
-  --no-install      n'installe pas les dépendances
+  --no-install      n'installe pas les dépendances (donc ne construit pas)
+  --no-build        installe mais ne construit pas
 `);
   process.exit(id ? 0 : 1);
 }
@@ -191,12 +198,57 @@ try {
   // `libc` que npm 10 retire : CI rouge au premier push, avec un message qui
   // parle de bindings natifs. C'est le piège le plus coûteux de la naissance
   // d'une application, et il n'a rien d'évident.
+  let port = null;
   if (!drapeau('no-install')) {
     console.log('· npm install (npm 10, la version du runner)');
     run('npx', ['--yes', 'npm@10.9.8', 'install', '--no-audit', '--no-fund'], {
       cwd: cible,
       shell: process.platform === 'win32',
     });
+
+    // ── 3 bis. Le port de développement ──────────────────────────────────
+    //
+    // UNIQUE DANS LA FAMILLE. Presque toutes les apps démarraient sur le 5173
+    // de Vite et se disputaient le port dès que deux tournaient côte à côte.
+    // Le catalogue du socle installé sait rendre le prochain libre ; le
+    // `launch.json` de l'éditeur le porte, et `vite.config.ts` aussi quand le
+    // squelette lit `devPortOf`. L'inscription au catalogue le figera.
+    const catalogue = await import(
+      pathToFileURL(
+        join(
+          cible,
+          'node_modules/@mister-guiiug/dev-pwa-config/apps-catalog.js'
+        )
+      ).href
+    ).catch(() => null);
+    const choix = choisirPort(catalogue);
+    port = choix.port;
+    mkdirSync(join(cible, '.claude'), { recursive: true });
+    writeFileSync(join(cible, '.claude/launch.json'), launchJson(id, port));
+    const viteConfig = join(cible, 'vite.config.ts');
+    if (existsSync(viteConfig)) {
+      writeFileSync(
+        viteConfig,
+        remplacerPort(readFileSync(viteConfig, 'utf8'), port)
+      );
+    }
+    console.log(
+      `· port de développement ${port} (${choix.origine === 'catalogue' ? 'le prochain libre du catalogue' : 'le socle installé ne connaît pas encore les ports'})`
+    );
+
+    // ── 3 ter. Construire ce qu'on engendre ──────────────────────────────
+    //
+    // Jusqu'ici, la preuve « une app engendrée passe doctor --strict » était
+    // celle du squelette, à sa révision du moment. Ici c'est CETTE application,
+    // avec son nom substitué, qui doit passer le budget de poids et le docteur
+    // — avant d'être publiée, jamais après.
+    if (!drapeau('no-build')) {
+      console.log('· npm run build (budget de poids, pwa-doctor --strict)');
+      run('npm', ['run', 'build'], {
+        cwd: cible,
+        shell: process.platform === 'win32',
+      });
+    }
   }
 
   // ── 4. Le premier commit ─────────────────────────────────────────────────
@@ -275,13 +327,39 @@ try {
       ],
       { stdio: 'ignore' }
     );
+
+    // L'adresse est connue avant le premier déploiement : elle va sur la
+    // fiche du dépôt, avec les deux sujets qui rangent l'application dans la
+    // famille. Un échec ici n'annule pas une naissance réussie.
+    console.log('· fiche du dépôt : homepage et sujets');
+    try {
+      run(
+        'gh',
+        [
+          'repo',
+          'edit',
+          `mister-guiiug/${id}`,
+          '--homepage',
+          `https://mister-guiiug.github.io/${id}/`,
+          '--add-topic',
+          'pwa',
+          '--add-topic',
+          'mister-guiiug',
+        ],
+        { stdio: 'ignore' }
+      );
+    } catch (cause) {
+      console.warn(
+        `⚠ fiche du dépôt non renseignée (${cause.message.split('\n')[0]}) — gh repo edit à la main.`
+      );
+    }
   }
 } finally {
   rmSync(travail, { recursive: true, force: true });
 }
 
 console.log(`
-✔ ${cible}
+✔ ${cible}${port ? `  (port de développement : ${port})` : ''}
 
 Ce qui reste, et que ce générateur ne fait pas :
 
@@ -289,9 +367,21 @@ Ce qui reste, et que ce générateur ne fait pas :
        node scripts/apply-rulesets.mjs ${id}
      (il lit le compte, ce dépôt y est déjà)
   2. inscrire l'application dans apps-catalog.js du socle, par une PR,
-     sans quoi elle n'apparaît pas chez ses sœurs
+     sans quoi elle n'apparaît pas chez ses sœurs${port ? ` — avec devPort: ${port}` : ''}
   3. remplacer public/favicon.svg puis : npm run icons
   4. supprimer src/features/home/ — la fonctionnalité d'exemple
+
+Si l'application prend un projet Supabase, et seulement alors — chaque
+pièce manque en silence (PARAMETRAGE.md du socle) :
+
+  · VITE_SUPABASE_URL et VITE_SUPABASE_ANON_KEY en VARIABLES du dépôt
+    (gh variable set), SUPABASE_PROJECT_ID aussi ;
+  · SUPABASE_ACCESS_TOKEN et SUPABASE_DB_PASSWORD en secrets, par le
+    propriétaire ;
+  · la table keep_alive (supabase/keep-alive.sql), sinon le ping répond 404
+    et le projet Free s'endort au 7ᵉ jour ;
+  · côté projet : site_url et la liste d'URL de retour (localhost:3000 seul
+    à la création), et le hook « Custom Access Token » pour les rôles.
 
 Aucun secret n'a été posé, et c'est délibéré : un générateur qui écrit des
 secrets est un générateur qui les connaît.

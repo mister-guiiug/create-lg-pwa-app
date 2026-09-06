@@ -34,14 +34,16 @@ fait pas de bruit, il ne fait rien.
 
 ## Ce qu'il fait
 
-| Étape          | Ce qu'elle règle                                                                                     |
-| -------------- | ---------------------------------------------------------------------------------------------------- |
-| Téléchargement | l'archive du squelette à sa **dernière étiquette** (ou à la référence demandée), sans son historique |
-| Identité       | l'identifiant **et** le nom affiché ; un contrôle refuse la moindre trace restante                   |
-| README         | réécrit pour la nouvelle application — celui du squelette parle du squelette                         |
-| `npm install`  | par **npm 10**, la version du runner                                                                 |
-| Premier commit | conventionnel, sur `main`                                                                            |
-| `--publish`    | dépôt public, poussée, et **Pages activées par un PUT**                                              |
+| Étape          | Ce qu'elle règle                                                                                                  |
+| -------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Téléchargement | l'archive du squelette à sa **dernière étiquette** (ou à la référence demandée), sans son historique              |
+| Identité       | l'identifiant **et** le nom affiché ; un contrôle refuse la moindre trace restante                                |
+| README         | réécrit pour la nouvelle application — celui du squelette parle du squelette                                      |
+| `npm install`  | par **npm 10**, la version du runner                                                                              |
+| Port           | le prochain port de développement libre du catalogue, dans `.claude/launch.json` et `vite.config.ts`              |
+| Construction   | `npm run build` — budget de poids et `pwa-doctor --strict` — sur l'application engendrée, avant toute publication |
+| Premier commit | conventionnel, sur `main`                                                                                         |
+| `--publish`    | dépôt public, poussée, **Pages activées par un PUT**, `homepage` et sujets sur la fiche du dépôt                  |
 
 Les deux dernières lignes sont sa vraie valeur. Substituer un nom prend dix
 lignes ; ce que personne n'avait automatisé, ce sont les gestes d'après et
@@ -59,7 +61,10 @@ leurs pièges :
 ## Ce qu'il ne fait pas, et pourquoi
 
 - **Poser un secret.** Un générateur qui écrit des secrets est un générateur
-  qui les connaît. Il imprime ce qui reste à poser.
+  qui les connaît. Il imprime ce qui reste à poser — et, pour une application
+  qui prendra un projet Supabase, la liste de ce qui manque en silence
+  (variables, secrets, table `keep_alive`, adresse de retour du lien, hook de
+  rôle), telle que `PARAMETRAGE.md` du socle la détaille.
 - **Protéger la branche.** Cela vit dans le socle
   (`node scripts/apply-rulesets.mjs <id>`), qui lit le compte : le dépôt neuf y
   est déjà.
@@ -76,7 +81,8 @@ leurs pièges :
 --from <ref>      branche ou étiquette du squelette (défaut : sa dernière étiquette, sinon main)
 --dir <chemin>    dossier de sortie (défaut : ./<id>)
 --publish         crée le dépôt GitHub, pousse, active Pages (exige gh)
---no-install      n'installe pas les dépendances
+--no-install      n'installe pas les dépendances (donc ne construit pas)
+--no-build        installe mais ne construit pas
 ```
 
 Un identifiant hors convention `miss-*` / `mister-*` est **accepté mais
