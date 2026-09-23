@@ -40,6 +40,10 @@ jobs:
   engendrer:
     name: Engendrer une application depuis le squelette
     runs-on: ubuntu-latest
+    env:
+      # Deux apostrophes droites : la chaîne passe entre guillemets doubles dans
+      # le dictionnaire, ce que la vérification de Prettier ci-dessous éprouve.
+      DESCRIPTION: "L'application d'essai de la CI, engendrée à chaque poussée."
     steps:
       - uses: actions/checkout@v7
         with:
@@ -50,7 +54,7 @@ jobs:
           node-version: '22'
 
       - name: Engendrer
-        run: node bin/create-lg-pwa-app.mjs miss-essai-ci --no-install --dir /tmp/engendree
+        run: node bin/create-lg-pwa-app.mjs miss-essai-ci --no-install --dir /tmp/engendree --description "$DESCRIPTION"
 
       # Le README cite le squelette comme ORIGINE, en lien : c'est voulu, et
       # c'est la seule occurrence tolérée.
@@ -67,6 +71,26 @@ jobs:
           grep -q "APP_ID = 'miss-essai-ci'" /tmp/engendree/src/app/links.ts
           echo "✅ identité substituée, README réécrit"
 
+      # Le générateur ÉCHOUE si une phrase du squelette subsiste, mais il ne
+      # fait qu'AVERTIR quand une place manque : le squelette a pu la retirer
+      # à dessein. Ici, les comptes sont ceux du squelette d'aujourd'hui — deux
+      # balises meta, deux phrases dans deux langues — et c'est ce job qui
+      # rougit le jour où l'une d'elles change de place.
+      - name: La description posée à chacune de ses places
+        working-directory: /tmp/engendree
+        run: |
+          attendu() {
+            n=$(grep -c -F -- "$2" "$1" || true)
+            if [ "$n" -ne "$3" ]; then
+              echo "::error::$1 : « $2 » $n fois, $3 attendues"
+              exit 1
+            fi
+          }
+          attendu index.html "$DESCRIPTION" 2
+          attendu src/i18n/messages.ts "$DESCRIPTION" 4
+          attendu src/i18n/messages.ts 'TODO traduire' 2
+          echo "✅ meta description, og:description, app.tagline et about.what"
+
       # LA PREUVE QUI MANQUAIT : l'application engendrée — pas le squelette —
       # s'installe, se construit, passe le budget de poids et `pwa-doctor
       # --strict`. `npm ci` lit le lockfile du squelette, écrit par npm 10 ;
@@ -78,3 +102,11 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm run build
+
+      # La première CI de l'application joue `prettier --check`. Une phrase
+      # remplacée change la longueur de sa ligne, donc sa mise en page : les
+      # fichiers où la description a pris place passent ici par le Prettier
+      # de l'application elle-même, avec la configuration du socle.
+      - name: Les fichiers réécrits passent Prettier
+        working-directory: /tmp/engendree
+        run: npx prettier --check index.html src/i18n/messages.ts package.json
