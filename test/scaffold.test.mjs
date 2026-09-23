@@ -30,6 +30,7 @@ import {
   fichiersTexte,
   launchJson,
   readme,
+  realignerTableaux,
   remplacerPort,
   substituer,
   titreDepuisId,
@@ -520,4 +521,102 @@ test('une place introuvable est signalée, et rien n’est inventé', () => {
   assert.deepEqual(sans.descriptions.manquantes, [
     'src/i18n/messages.ts : fichier absent',
   ]);
+});
+
+// ── Les tableaux Markdown ─────────────────────────────────────────────────
+
+const MARKDOWN = { ...configPrettier, parser: 'markdown' };
+
+/**
+ * Un ADR à l'image du 0012 du squelette : un tableau DANS une liste, dont des
+ * cellules citent l'identifiant et le nom, avec les trois alignements ; un bloc
+ * de code qui ressemble à un tableau ; un tableau qui ne cite rien.
+ */
+const ADR_BROUILLON = `# Mesure
+
+La prose ne s'aligne pas : ${SQUELETTE_TITRE} peut changer de longueur ici.
+
+1. Le relevé :
+
+   | ce qui était à prouver | relevé | n |
+   | :- | :-: | -: |
+   | \`app_name\` présent | \`app_name: "${SQUELETTE}"\` | 1 |
+   | le refus | seul \`dwc_consent:/${SQUELETTE}/\` garde le choix | 22 |
+   | le nom | ${SQUELETTE_TITRE} ${String.fromCodePoint(0x1f389)} | 333 |
+
+2. Un bloc de code n'est pas un tableau :
+
+   \`\`\`text
+   | ${SQUELETTE} | x |
+   | --- | --- |
+   \`\`\`
+
+| sans le nom | x |
+| - | - |
+| a \\| b | y |
+`;
+
+test('un nom d’une autre longueur ne désaligne aucun tableau', async () => {
+  // Le départ est tel que la CI du squelette le formate.
+  const adr = await prettier.format(ADR_BROUILLON, MARKDOWN);
+  const code = adr.slice(adr.indexOf('```text'), adr.lastIndexOf('```'));
+
+  for (const [id, titre] of [
+    ['miss-x', 'Miss X'],
+    [
+      'mister-une-application-au-nom-long',
+      'Mister Une Application Au Nom Long',
+    ],
+  ]) {
+    const lu = squelette(racine => {
+      ecrire(racine, 'docs/adr/0012-mesure.md', adr);
+      substituer(racine, { id, titre, description: 'x' });
+      return readFileSync(join(racine, 'docs/adr/0012-mesure.md'), 'utf8');
+    });
+
+    assert.equal(lu, await prettier.format(lu, MARKDOWN), id);
+    assert.match(lu, new RegExp(`app_name: "${id}"`));
+    // Le bloc de code reçoit le nom, sans être réaligné : Prettier n'y touche
+    // pas, et ce n'est pas un tableau.
+    assert.ok(lu.includes(code.split(SQUELETTE).join(id)), id);
+  }
+});
+
+test('realignerTableaux aligne comme Prettier', async () => {
+  const emoji = String.fromCodePoint(0x1f389);
+  const ideogrammes = String.fromCodePoint(0x65e5, 0x672c);
+  const accent = 'e' + String.fromCodePoint(0x301);
+  const brouillons = [
+    // Les quatre alignements, et un centrage à espace impair.
+    '| g | c | d | n |\n| :- | :-: | -: | - |\n| a | bb | ccc | dddd |\n| une cellule longue | x | y | z |\n',
+    // Trois colonnes au moins, même pour une lettre.
+    '| a | b |\n| - | - |\n| x | y |\n',
+    // Dans une liste, le tableau garde l'indentation de sa ligne.
+    '1. Premier point :\n\n   | ce qui | relevé |\n   | - | - |\n   | un | `app_name: "miss-x"` |\n',
+    // Des colonnes, pas des caractères.
+    `| a | b |\n| - | - |\n| ${emoji}${emoji} | ${ideogrammes} |\n| é | ${accent} |\n`,
+    // Un \\| échappé reste dans sa cellule.
+    '| a | b |\n| - | - |\n| x \\| y | z |\n',
+    '| titre |\n| :-: |\n| abcd |\n| a |\n',
+  ];
+  for (const b of brouillons) {
+    assert.equal(realignerTableaux(b), await prettier.format(b, MARKDOWN), b);
+  }
+});
+
+test('realignerTableaux ne touche ni un bloc de code, ni ce qu’il ne comprend pas', () => {
+  for (const intact of [
+    '```\n| a | b |\n| - | - |\n```\n',
+    '~~~~md\n| a | b |\n| - | - |\n~~~\n| c | d |\n~~~~\n',
+    // Une rangée d'une cellule de moins : rien n'est deviné.
+    '| a | b |\n| - | - |\n| x |\n',
+  ]) {
+    assert.equal(realignerTableaux(intact), intact);
+  }
+  // Un tableau que le filtre écarte reste tel qu'il est, même mal aligné.
+  const compact = '| a | b |\n| - | - |\n| x | y |\n';
+  assert.equal(
+    realignerTableaux(compact, () => false),
+    compact
+  );
 });

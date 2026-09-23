@@ -37,7 +37,7 @@ fait pas de bruit, il ne fait rien.
 | Étape          | Ce qu'elle règle                                                                                                  |
 | -------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Téléchargement | l'archive du squelette à sa **dernière étiquette** (ou à la référence demandée), sans son historique              |
-| Identité       | l'identifiant **et** le nom affiché ; un contrôle refuse la moindre trace restante                                |
+| Identité       | l'identifiant **et** le nom affiché, tableaux Markdown réalignés ; un contrôle refuse la moindre trace restante   |
 | Description    | `--description` à chaque place où le squelette se décrit ; un contrôle refuse qu'une de ses phrases subsiste      |
 | README         | réécrit pour la nouvelle application — celui du squelette parle du squelette                                      |
 | `npm install`  | par **npm 10**, la version du runner                                                                              |
@@ -127,7 +127,10 @@ n'échoue ; on s'en aperçoit en production.
 
 La CI y ajoute le seul test que les tests unitaires ne peuvent pas faire :
 engendrer depuis le squelette **réel**, et vérifier l'accord entre les deux
-dépôts.
+dépôts. Elle engendre depuis sa dernière étiquette, que l'application installe,
+construit et passe à son propre `format:check` ; puis depuis la **pointe de
+`main`**, dont l'arbre passe Prettier lui aussi — ce qui a été ajouté au
+squelette depuis l'étiquette n'est éprouvé nulle part ailleurs.
 
 ## Licence
 

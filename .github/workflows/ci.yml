@@ -103,10 +103,24 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
 
-      # La première CI de l'application joue `prettier --check`. Une phrase
-      # remplacée change la longueur de sa ligne, donc sa mise en page : les
-      # fichiers où la description a pris place passent ici par le Prettier
-      # de l'application elle-même, avec la configuration du socle.
-      - name: Les fichiers réécrits passent Prettier
+      # La première CI de l'application joue `format:check`, sur TOUT l'arbre.
+      # Un nom ou une phrase d'une autre longueur change une mise en page — une
+      # ligne qui tient ou non, un tableau Markdown désaligné. Vérifier les
+      # seuls fichiers qu'on croit touchés a laissé passer l'ADR 0012 : on
+      # joue donc ici la commande de l'application elle-même.
+      - name: L'application engendrée passe son propre format:check
         working-directory: /tmp/engendree
-        run: npx prettier --check index.html src/i18n/messages.ts package.json
+        run: npm run format:check
+
+      # LA POINTE DE `main` AUSSI. Le générateur tire la dernière ÉTIQUETTE du
+      # squelette : ce qui a été ajouté depuis n'est éprouvé nulle part avant la
+      # prochaine, et c'est ainsi que l'ADR 0012 aurait fait naître des apps
+      # rouges sans que rien ne l'annonce. Engendrée sans installation, cette
+      # seconde app passe par le Prettier et la configuration de la première.
+      - name: Depuis la pointe de main, l'arbre engendré passe Prettier
+        run: |
+          node bin/create-lg-pwa-app.mjs miss-essai-ci --no-install --from main \
+            --dir /tmp/depuis-main --description "$DESCRIPTION"
+          cd /tmp/depuis-main
+          /tmp/engendree/node_modules/.bin/prettier \
+            --config /tmp/engendree/prettier.config.js --check .
