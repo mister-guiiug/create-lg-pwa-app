@@ -64,11 +64,11 @@ leurs pièges :
 Le squelette se décrit à cinq places : `package.json`, la meta `description`
 et `og:description` d'`index.html` (plus `twitter:description` si elle
 existe), et dans chaque dictionnaire de `src/i18n/messages.ts`, `app.tagline`
-— la première ligne de l'accueil, sous le nom de l'application — et
-`about.what`. Laissées telles quelles, elles font naître chaque application
-en se présentant comme le squelette, **auprès des moteurs d'abord** : la meta
-description est aussi ce que le socle sert aux robots sans JavaScript et ce
-qu'il met dans les données structurées.
+— le sous-titre d'« À propos » et, depuis pwa-starter-kit#67, la première
+ligne de l'accueil — et `about.what`. Laissées telles quelles, elles font
+naître chaque application en se présentant comme le squelette, **auprès des
+moteurs d'abord** : la meta description est aussi ce que le socle sert aux
+robots sans JavaScript et ce qu'il met dans les données structurées.
 
 Le générateur ne connaît pas ces phrases, qui changent d'une étiquette du
 squelette à l'autre : il réécrit ce qui **occupe ces places**, retient ce
@@ -82,6 +82,12 @@ la première CI de l'application joue `prettier --check`.
 laisser mentir dans l'autre langue ; mettre le marqueur dans la chaîne,
 c'est l'afficher sur l'accueil et le donner aux moteurs. Une phrase juste
 dans la mauvaise langue ne dit rien de faux, et se retrouve par une recherche.
+
+**L'exemple part, l'accroche reste.** Le README engendré et le message final
+disent de remplacer la fonctionnalité d'exemple de `src/features/home/` —
+mais pas de supprimer l'écran entier quand il porte l'accroche et le pied de
+page de la famille. Le générateur le LIT dans l'écran engendré, sans supposer
+de version du squelette : à `v1.2.0`, l'accueil n'avait ni l'une ni l'autre.
 
 ## Ce qu'il ne fait pas, et pourquoi
 

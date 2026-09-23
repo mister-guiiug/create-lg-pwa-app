@@ -124,3 +124,9 @@ jobs:
           cd /tmp/depuis-main
           /tmp/engendree/node_modules/.bin/prettier \
             --config /tmp/engendree/prettier.config.js --check .
+          # Depuis pwa-starter-kit#67, l'accueil porte l'accroche : le README
+          # engendré doit dire de la garder, pas de supprimer l'écran.
+          if ! grep -q "l'accroche \`app.tagline\`" README.md; then
+            echo "::error::README.md : l'accroche de l'accueil n'est pas dite à garder"
+            exit 1
+          fi
