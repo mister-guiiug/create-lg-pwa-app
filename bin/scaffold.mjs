@@ -179,27 +179,77 @@ export function fichiersTexte(racine) {
  * qu'une laisse une application qui s'appelle correctement dans son URL et
  * « PWA Starter Kit » dans son onglet.
  *
- * @returns {{ fichiers: string[], restes: string[] }} les fichiers réécrits, et
- *   ceux où le nom du squelette subsiste — qui doivent être vides.
+ * LA DESCRIPTION, ELLE, N'EST PAS UNE CHAÎNE À REMPLACER : c'est une PLACE. Le
+ * squelette se décrit dans `package.json`, dans les balises meta d'`index.html`
+ * et dans deux phrases de chaque dictionnaire, et ces textes changent d'une
+ * étiquette à l'autre. Le générateur ne les connaît donc pas : il réécrit ce qui
+ * occupe ces places, retient ce qu'il a retiré, puis vérifie que rien de ce
+ * qu'il a retiré ne subsiste ailleurs.
+ *
+ * @returns {{
+ *   fichiers: string[],
+ *   restes: string[],
+ *   descriptions: { restes: string[], manquantes: string[], aTraduire: string[] },
+ * }} les fichiers réécrits ; ceux où le nom du squelette subsiste — qui doivent
+ *   être vides ; et pour la description : les fichiers où un texte du squelette
+ *   subsiste (vides eux aussi), les places attendues et introuvables, les
+ *   phrases recopiées du français dans une autre langue.
  */
 export function substituer(racine, { id, titre, description }) {
   const fichiers = [];
+  const anciennes = [];
+  const manquantes = [];
+  const aTraduire = [];
+  // Une meta description tient sur une ligne, une chaîne de dictionnaire aussi.
+  const phrase = description?.replace(/\s+/g, ' ').trim();
+  const vus = new Set();
   for (const rel of fichiersTexte(racine)) {
     const abs = join(racine, rel);
     const avant = readFileSync(abs, 'utf8');
     let apres = avant.split(SQUELETTE).join(id);
     apres = apres.split(SQUELETTE_TITRE).join(titre);
-    if (rel === 'package.json') apres = reecrirePaquet(apres, { description });
+    const reecrire =
+      rel === 'package.json' ? reecrirePaquet : phrase && DESCRIPTIONS[rel];
+    if (reecrire) {
+      vus.add(rel);
+      const r = reecrire(apres, rel === 'package.json' ? description : phrase);
+      apres = r.texte;
+      anciennes.push(...r.anciennes);
+      manquantes.push(...r.manquantes.map(m => `${rel} : ${m}`));
+      aTraduire.push(...(r.aTraduire ?? []).map(m => `${rel} : ${m}`));
+    }
     if (apres !== avant) {
       writeFileSync(abs, apres);
       fichiers.push(rel);
     }
   }
+  if (phrase) {
+    for (const rel of Object.keys(DESCRIPTIONS)) {
+      if (!vus.has(rel)) manquantes.push(`${rel} : fichier absent`);
+    }
+  }
 
-  const restes = fichiersTexte(racine).filter(rel =>
-    readFileSync(join(racine, rel), 'utf8').includes(SQUELETTE)
+  // LE README EST ÉCARTÉ du second contrôle : `readme()` le remplace en entier
+  // juste après, et une phrase du squelette qu'il citerait disparaîtrait avec.
+  // Un ancien texte que la nouvelle description CONTIENT n'est pas cherché :
+  // on le trouverait partout où elle vient d'être écrite.
+  const retirees = anciennes.filter(
+    a => a && !phrase?.includes(a) && !description?.includes(a)
   );
-  return { fichiers, restes };
+  const restes = [];
+  const restesDescription = [];
+  for (const rel of fichiersTexte(racine)) {
+    const texte = readFileSync(join(racine, rel), 'utf8');
+    if (texte.includes(SQUELETTE)) restes.push(rel);
+    if (rel !== 'README.md' && retirees.some(a => texte.includes(a))) {
+      restesDescription.push(rel);
+    }
+  }
+  return {
+    fichiers,
+    restes,
+    descriptions: { restes: restesDescription, manquantes, aTraduire },
+  };
 }
 
 /**
@@ -207,11 +257,253 @@ export function substituer(racine, { id, titre, description }) {
  * description du squelette remplacée — sans quoi chaque application naîtrait en
  * se décrivant comme « le squelette de la famille ».
  */
-function reecrirePaquet(json, { description }) {
+function reecrirePaquet(json, description) {
   const paquet = JSON.parse(json);
+  const anciennes = [];
   paquet.version = '0.1.0';
-  if (description) paquet.description = description;
-  return JSON.stringify(paquet, null, 2) + '\n';
+  if (description) {
+    anciennes.push(paquet.description);
+    paquet.description = description;
+  }
+  return {
+    texte: JSON.stringify(paquet, null, 2) + '\n',
+    anciennes,
+    manquantes: [],
+  };
+}
+
+/**
+ * Les autres places où le squelette se décrit, et qui les réécrit.
+ *
+ * Pourquoi elles comptent autant que le paquet : la meta description est celle
+ * que lisent les moteurs, celle que le socle sert aux robots sans JavaScript et
+ * celle de ses données structurées ; `app.tagline` est la première ligne de
+ * l'accueil, sous le nom de l'application, et le sous-titre d'« À propos ».
+ */
+const DESCRIPTIONS = {
+  'index.html': reecrireMeta,
+  'src/i18n/messages.ts': reecrireDictionnaires,
+};
+
+// ── Écrire comme Prettier ──────────────────────────────────────────────────
+//
+// L'APPLICATION ENGENDRÉE PASSE `prettier --check` À SA PREMIÈRE CI. Une phrase
+// remplacée change la longueur de sa ligne, et Prettier la range autrement :
+// sur une ligne ou sur deux, entre guillemets simples ou doubles. Garder
+// l'ancienne mise en page avec le nouveau texte, c'est un premier push rouge.
+// Les deux formes que le générateur écrit suivent donc les règles de Prettier
+// avec la configuration du socle (`prettier.config.js` en est la copie
+// vérifiée) ; les tests confrontent le résultat à Prettier lui-même.
+
+/** `printWidth` et `tabWidth` du socle. */
+const LARGEUR = 80;
+const TABULATION = 2;
+
+/**
+ * La largeur d'un texte telle que Prettier la compte : un émoji ou un
+ * idéogramme vaut deux colonnes, un accent combinant ou un caractère de
+ * contrôle aucune.
+ */
+function largeur(texte) {
+  let n = 0;
+  for (const c of texte.replace(/\p{RGI_Emoji}/gv, '  ')) {
+    if (SANS_LARGEUR.test(c)) continue;
+    n += DOUBLE_LARGEUR.test(c) ? 2 : 1;
+  }
+  return n;
+}
+const SANS_LARGEUR = /[\p{Cc}\u0300-\u036f]/u;
+const DOUBLE_LARGEUR =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}\u3000-\u303f\uff01-\uff60\uffe0-\uffe6]/u;
+
+const compter = (texte, c) => texte.split(c).length - 1;
+
+/**
+ * Une chaîne TypeScript : guillemets simples (`singleQuote`), doubles si le
+ * texte contient plus d'apostrophes droites que de guillemets.
+ */
+function chaineTs(texte) {
+  const q = compter(texte, "'") > compter(texte, '"') ? '"' : "'";
+  return q + texte.replaceAll('\\', '\\\\').replaceAll(q, `\\${q}`) + q;
+}
+
+/**
+ * `cle: 'valeur',` sur une ligne si elle tient, sinon la valeur à la ligne
+ * suivante. Jamais coupée derrière une clé de moins de `tabWidth + 3`
+ * caractères : Prettier juge que le retour n'y gagnerait rien, et `what:`
+ * reste sur sa ligne même à cent dix colonnes.
+ */
+function proprieteTs(indent, cle, texte, fin) {
+  const valeur = chaineTs(texte);
+  const uneLigne = `${indent}${cle}: ${valeur}${fin}`;
+  if (cle.length < TABULATION + 3 || largeur(uneLigne) <= LARGEUR) {
+    return uneLigne;
+  }
+  return `${indent}${cle}:\n${indent}${' '.repeat(TABULATION)}${valeur}${fin}`;
+}
+
+/**
+ * Une valeur d'attribut HTML : guillemets doubles, simples si le texte contient
+ * plus de guillemets que d'apostrophes — Prettier fait ce choix lui-même et
+ * réécrit `&quot;` / `&apos;` en conséquence ; `&amp;`, `&lt;`, `&gt;` restent.
+ */
+function attributHtml(texte) {
+  const echappe = texte
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+  return compter(texte, '"') > compter(texte, "'")
+    ? `'${echappe.replaceAll("'", '&apos;')}'`
+    : `"${echappe.replaceAll('"', '&quot;')}"`;
+}
+
+/** Une balise sur une ligne si elle tient, sinon un attribut par ligne. */
+function baliseMeta(indent, attributs) {
+  const uneLigne = `${indent}<meta ${attributs.join(' ')} />`;
+  if (largeur(uneLigne) <= LARGEUR) return uneLigne;
+  const suite = `${indent}${' '.repeat(TABULATION)}`;
+  return [
+    `${indent}<meta`,
+    ...attributs.map(a => suite + a),
+    `${indent}/>`,
+  ].join('\n');
+}
+
+const ENTITES = {
+  quot: '"',
+  apos: "'",
+  '#39': "'",
+  amp: '&',
+  lt: '<',
+  gt: '>',
+};
+const decoderHtml = texte =>
+  texte.replace(/&(quot|apos|#39|amp|lt|gt);/g, (_, e) => ENTITES[e]);
+
+// ── Les places ─────────────────────────────────────────────────────────────
+
+/** Les balises qui portent la description d'une page. */
+const META_DESCRIPTION = new Set([
+  'description',
+  'og:description',
+  'twitter:description',
+]);
+
+/**
+ * Celles dont l'absence se signale. Pas `twitter:description` : le squelette
+ * n'en porte pas — `twitter:card` retombe sur `og:description` —, et un
+ * avertissement qui sonne à chaque naissance n'avertit plus de rien.
+ */
+const META_ATTENDUES = ['description', 'og:description'];
+
+/**
+ * Les balises meta d'`index.html`. Une balise en commentaire n'est pas une
+ * balise : l'alternative consomme les commentaires d'abord et les rend tels
+ * quels.
+ */
+function reecrireMeta(html, phrase) {
+  const anciennes = [];
+  const trouvees = new Set();
+  const texte = html.replace(
+    /<!--[\s\S]*?-->|^([ \t]*)<meta\b([^>]*)>/gim,
+    (balise, indent, interieur) => {
+      if (indent === undefined) return balise;
+      const attributs = [
+        ...interieur
+          .replace(/\/\s*$/, '')
+          .matchAll(/([^\s=]+)(?:\s*=\s*("[^"]*"|'[^']*'|[^\s"'>]+))?/g),
+      ].map(([brut, nom, valeur]) => ({
+        brut,
+        nom: nom.toLowerCase(),
+        valeur: valeur?.replace(/^["']|["']$/g, ''),
+      }));
+      const cle = attributs
+        .find(a => a.nom === 'name' || a.nom === 'property')
+        ?.valeur?.toLowerCase();
+      const contenu = attributs.find(a => a.nom === 'content');
+      if (!META_DESCRIPTION.has(cle) || !contenu) return balise;
+      trouvees.add(cle);
+      anciennes.push(decoderHtml(contenu.valeur ?? ''));
+      contenu.brut = `content=${attributHtml(phrase)}`;
+      return baliseMeta(
+        indent,
+        attributs.map(a => a.brut)
+      );
+    }
+  );
+  return {
+    texte,
+    anciennes,
+    manquantes: META_ATTENDUES.filter(c => !trouvees.has(c)).map(
+      c => `<meta ${c}>`
+    ),
+  };
+}
+
+/** Dans chaque dictionnaire, les deux phrases qui disent ce qu'est l'app. */
+const PHRASES = [
+  ['app', 'tagline'],
+  ['about', 'what'],
+];
+
+/** Posé au-dessus d'une phrase recopiée dans une autre langue que le français. */
+export const A_TRADUIRE =
+  '// TODO traduire : create-lg-pwa-app a recopié ici la description française.';
+
+/**
+ * `app.tagline` et `about.what`, dans chaque dictionnaire de
+ * `src/i18n/messages.ts`.
+ *
+ * L'INDENTATION EST UNE STRUCTURE FIABLE ICI, parce que la CI du squelette
+ * exige Prettier : un dictionnaire est un `const <locale> … = {` fermé par `};`
+ * en colonne zéro, ses sections sont à deux espaces, leurs clés à quatre. Un
+ * `tagline:` dans un commentaire ou dans un objet imbriqué n'a pas cette forme.
+ *
+ * L'ANGLAIS REÇOIT LE TEXTE FRANÇAIS, marqué d'un commentaire. Les deux autres
+ * choix sont pires : garder la phrase du squelette, c'est la laisser mentir
+ * dans l'autre langue — celle qu'un navigateur sans préférence, ou un robot,
+ * obtient souvent ; mettre le marqueur DANS la chaîne, c'est l'afficher sur
+ * l'accueil et le donner à lire aux moteurs. Une phrase juste dans la mauvaise
+ * langue se voit, se cherche (`TODO traduire`) et ne dit rien de faux.
+ */
+function reecrireDictionnaires(source, phrase) {
+  const anciennes = [];
+  const manquantes = [];
+  const aTraduire = [];
+  let dictionnaires = 0;
+  const texte = source.replace(
+    /^(const (\w+)\b[^=\n]*= \{\n)([\s\S]*?)^\};$/gm,
+    (tout, entete, locale, corps) => {
+      if (!/^ {2}app: \{$/m.test(corps)) return tout;
+      dictionnaires += 1;
+      for (const [section, cle] of PHRASES) {
+        const chemin = `${locale}.${section}.${cle}`;
+        let trouvee = false;
+        corps = corps.replace(
+          new RegExp(String.raw`^ {2}${section}: \{\n[\s\S]*?^ {2}\},?$`, 'm'),
+          bloc =>
+            bloc.replace(
+              new RegExp(
+                String.raw`^( {4})${cle}:\s*(['"])((?:\\.|(?!\2)[^\\\n])*)\2(,?)$`,
+                'm'
+              ),
+              (_, indent, _q, brut, fin) => {
+                trouvee = true;
+                anciennes.push(brut.replace(/\\(.)/g, '$1'));
+                const ligne = proprieteTs(indent, cle, phrase, fin);
+                if (locale === 'fr') return ligne;
+                aTraduire.push(chemin);
+                return `${indent}${A_TRADUIRE}\n${ligne}`;
+              }
+            )
+        );
+        if (!trouvee) manquantes.push(chemin);
+      }
+      return `${entete}${corps}};`;
+    }
+  );
+  if (!dictionnaires) manquantes.push('aucun dictionnaire');
+  return { texte, anciennes, manquantes, aTraduire };
 }
 
 /**
@@ -267,7 +559,10 @@ il échoue à la moindre dette de conformité au parc.
 4. ajuster la palette dans \`src/index.css\` et les couleurs de \`vite.config.ts\` ;
 5. si l'application a un backend : poser \`VITE_SUPABASE_URL\` et
    \`VITE_SUPABASE_ANON_KEY\` en **variables** du dépôt, et appliquer
-   \`supabase/\` — sinon supprimer ce dossier et les deux workflows Supabase.
+   \`supabase/\` — sinon supprimer ce dossier et les deux workflows Supabase ;
+6. relire la description, que l'accueil affiche et que lisent les moteurs : la
+   meta d'\`index.html\`, \`app.tagline\` et \`about.what\` de
+   \`src/i18n/messages.ts\` — et traduire l'anglais, marqué \`TODO traduire\`.
 
 ## Les décisions
 

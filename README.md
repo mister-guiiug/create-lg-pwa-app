@@ -38,6 +38,7 @@ fait pas de bruit, il ne fait rien.
 | -------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Téléchargement | l'archive du squelette à sa **dernière étiquette** (ou à la référence demandée), sans son historique              |
 | Identité       | l'identifiant **et** le nom affiché ; un contrôle refuse la moindre trace restante                                |
+| Description    | `--description` à chaque place où le squelette se décrit ; un contrôle refuse qu'une de ses phrases subsiste      |
 | README         | réécrit pour la nouvelle application — celui du squelette parle du squelette                                      |
 | `npm install`  | par **npm 10**, la version du runner                                                                              |
 | Port           | le prochain port de développement libre du catalogue, dans `.claude/launch.json` et `vite.config.ts`              |
@@ -58,6 +59,30 @@ leurs pièges :
   chaque poussée — il republie le README rendu à la place de l'application. Le
   symptôme est un `<title>` qui vaut le nom du dépôt.
 
+## La description
+
+Le squelette se décrit à cinq places : `package.json`, la meta `description`
+et `og:description` d'`index.html` (plus `twitter:description` si elle
+existe), et dans chaque dictionnaire de `src/i18n/messages.ts`, `app.tagline`
+— la première ligne de l'accueil, sous le nom de l'application — et
+`about.what`. Laissées telles quelles, elles font naître chaque application
+en se présentant comme le squelette, **auprès des moteurs d'abord** : la meta
+description est aussi ce que le socle sert aux robots sans JavaScript et ce
+qu'il met dans les données structurées.
+
+Le générateur ne connaît pas ces phrases, qui changent d'une étiquette du
+squelette à l'autre : il réécrit ce qui **occupe ces places**, retient ce
+qu'il a retiré, et **échoue** si l'une de ces phrases subsiste ailleurs. Une
+place introuvable n'arrête rien — le squelette a pu la retirer — mais elle
+s'annonce. Les deux formes réécrites suivent la mise en page de Prettier :
+la première CI de l'application joue `prettier --check`.
+
+**L'anglais reçoit la phrase française**, avec un commentaire
+`// TODO traduire` au-dessus. Garder la phrase du squelette, c'est la
+laisser mentir dans l'autre langue ; mettre le marqueur dans la chaîne,
+c'est l'afficher sur l'accueil et le donner aux moteurs. Une phrase juste
+dans la mauvaise langue ne dit rien de faux, et se retrouve par une recherche.
+
 ## Ce qu'il ne fait pas, et pourquoi
 
 - **Poser un secret.** Un générateur qui écrit des secrets est un générateur
@@ -77,7 +102,7 @@ leurs pièges :
 ```
 <id>              nom du dépôt : miss-exemple, mister-exemple
 --nom "<titre>"   nom affiché (défaut : déduit de l'id)
---description "…" description du paquet et du manifeste
+--description "…" ce que fait l'app : paquet, meta description, accroche de l'accueil
 --from <ref>      branche ou étiquette du squelette (défaut : sa dernière étiquette, sinon main)
 --dir <chemin>    dossier de sortie (défaut : ./<id>)
 --publish         crée le dépôt GitHub, pousse, active Pages (exige gh)

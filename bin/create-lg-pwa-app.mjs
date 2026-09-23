@@ -66,7 +66,7 @@ create-lg-pwa-app — une application de la famille, en une commande.
   <id>              nom du dépôt : miss-exemple, mister-exemple
 
   --nom "<titre>"   nom affiché (défaut : déduit de l'id)
-  --description "…" description du paquet et du manifeste
+  --description "…" ce que fait l'app : paquet, meta description, accroche de l'accueil
   --from <ref>      branche ou étiquette du squelette (défaut : sa dernière étiquette, sinon main)
   --dir <chemin>    dossier de sortie (défaut : ./<id>)
   --publish         crée le dépôt GitHub, pousse, active Pages (exige gh)
@@ -145,10 +145,11 @@ console.log(
 // faire dans une application neuve, et le premier commit doit être le sien.
 const travail = mkdtempSync(join(tmpdir(), 'lg-pwa-'));
 const archive = join(travail, 'squelette.tar.gz');
-// Connu après l'installation, cité dans le message final : déclaré HORS du
+// Connus en cours de route, cités dans le message final : déclarés HORS du
 // bloc — la première CI qui a construit l'application l'a payé d'un
 // « port is not defined » à la dernière ligne.
 let port = null;
+let aTraduire = [];
 try {
   console.log('· téléchargement du squelette');
   const url = `https://codeload.github.com/${DEPOT_SQUELETTE}/tar.gz/${ref}`;
@@ -187,10 +188,32 @@ try {
 
   // ── 2. L'identité ────────────────────────────────────────────────────────
   console.log('· substitution de l’identité');
-  const { fichiers, restes } = substituer(cible, { id, titre, description });
+  const { fichiers, restes, descriptions } = substituer(cible, {
+    id,
+    titre,
+    description,
+  });
   if (restes.length) {
     throw new Error(`le nom du squelette subsiste dans : ${restes.join(', ')}`);
   }
+  // LA DESCRIPTION DU SQUELETTE NE SURVIT NULLE PART, au même titre que son
+  // nom : c'est la première ligne de l'accueil et ce que lisent les moteurs.
+  // Si le squelette la recopie un jour dans un fichier de plus, la naissance
+  // échoue ici — plutôt qu'une application qui se présente comme lui.
+  if (descriptions.restes.length) {
+    throw new Error(
+      `la description du squelette subsiste dans : ${descriptions.restes.join(', ')}`
+    );
+  }
+  // Une place introuvable n'arrête rien : le squelette a pu retirer la phrase
+  // à dessein. Mais il a pu aussi la déplacer, et le générateur ne la verrait
+  // plus — cela se dit.
+  for (const place of descriptions.manquantes) {
+    console.warn(
+      `⚠ description non posée — ${place} introuvable : le squelette a-t-il déplacé ce texte ?`
+    );
+  }
+  aTraduire = descriptions.aTraduire;
   writeFileSync(join(cible, 'README.md'), readme({ id, titre, description }));
   console.log(`  ${fichiers.length} fichier(s) réécrit(s)`);
 
@@ -373,6 +396,12 @@ Ce qui reste, et que ce générateur ne fait pas :
      sans quoi elle n'apparaît pas chez ses sœurs${port ? ` — avec devPort: ${port}` : ''}
   3. remplacer public/favicon.svg puis : npm run icons
   4. supprimer src/features/home/ — la fonctionnalité d'exemple
+  5. relire la description, que l'accueil affiche et que lisent les moteurs :
+     index.html (meta) et src/i18n/messages.ts (app.tagline, about.what)${
+       aTraduire.length
+         ? `\n     — l'anglais porte le texte français, marqué « TODO traduire »`
+         : ''
+     }
 
 Si l'application prend un projet Supabase, et seulement alors — chaque
 pièce manque en silence (PARAMETRAGE.md du socle) :
