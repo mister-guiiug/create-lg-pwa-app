@@ -30,6 +30,6 @@
     "url": "git+https://github.com/mister-guiiug/create-lg-pwa-app.git"
   },
   "devDependencies": {
-    "prettier": "^3.9.8"
+    "prettier": "^3.9.9"
   }
 }
