@@ -208,6 +208,16 @@ export function substituer(racine, { id, titre, description }) {
     const avant = readFileSync(abs, 'utf8');
     let apres = avant.split(SQUELETTE).join(id);
     apres = apres.split(SQUELETTE_TITRE).join(titre);
+    // UN NOM D'UNE AUTRE LONGUEUR DÉSALIGNE LE TABLEAU QUI LE CITE, et
+    // `prettier --check` refuse le fichier : l'ADR 0012 du squelette a fait
+    // naître toute application engendrée depuis `main` avec une CI rouge.
+    // Seuls les tableaux que la substitution a touchés sont réalignés.
+    if (rel.endsWith('.md') && apres !== avant) {
+      apres = realignerTableaux(
+        apres,
+        tableau => tableau.includes(id) || tableau.includes(titre)
+      );
+    }
     const reecrire =
       rel === 'package.json' ? reecrirePaquet : phrase && DESCRIPTIONS[rel];
     if (reecrire) {
@@ -379,6 +389,116 @@ const ENTITES = {
 };
 const decoderHtml = texte =>
   texte.replace(/&(quot|apos|#39|amp|lt|gt);/g, (_, e) => ENTITES[e]);
+
+const CLOTURE = /^[ \t]*(`{3,}|~{3,})/;
+const RANGEE = /^([ \t]*)\|.*\|[ \t]*$/;
+const DELIMITEUR = /^[ \t]*\|(?:[ \t]*:?-+:?[ \t]*\|)+[ \t]*$/;
+
+/** Les cellules d'une rangée : coupées aux `|` non échappés, rognées. */
+const cellules = ligne =>
+  ligne
+    .trim()
+    .slice(1, -1)
+    .split(/(?<!\\)\|/)
+    .map(c => c.trim());
+
+/**
+ * Les tableaux Markdown d'un texte, alignés comme Prettier les aligne : chaque
+ * colonne à la largeur de sa plus longue cellule (trois au moins), comptée en
+ * colonnes ; la ligne de séparation en tirets, avec les deux-points de
+ * l'alignement ; une cellule centrée met l'espace impair à droite.
+ *
+ * Un tableau garde l'indentation de sa ligne — celui de l'ADR 0012 vit dans
+ * une liste. Un bloc de code n'est jamais touché : Prettier ne le formate pas.
+ * Un tableau dont une rangée n'a pas le nombre de cellules de l'en-tête est
+ * laissé tel quel, plutôt que deviné.
+ *
+ * @param {string} markdown
+ * @param {(tableau: string) => boolean} [retenir]  Les tableaux à réaligner,
+ *   selon leur texte ; tous par défaut.
+ */
+export function realignerTableaux(markdown, retenir = () => true) {
+  const lignes = markdown.split('\n');
+  let bloc = null;
+  for (let i = 0; i < lignes.length; i++) {
+    const cloture = CLOTURE.exec(lignes[i]);
+    if (bloc) {
+      const fin = cloture?.[1];
+      if (
+        fin?.[0] === bloc[0] &&
+        fin.length >= bloc.length &&
+        lignes[i].trim() === fin
+      ) {
+        bloc = null;
+      }
+      continue;
+    }
+    if (cloture) {
+      bloc = cloture[1];
+      continue;
+    }
+
+    const indent = RANGEE.exec(lignes[i])?.[1];
+    if (indent === undefined || !DELIMITEUR.test(lignes[i + 1] ?? '')) continue;
+    let fin = i + 2;
+    while (fin < lignes.length && RANGEE.exec(lignes[fin])?.[1] === indent) {
+      fin += 1;
+    }
+    const tableau = lignes.slice(i, fin);
+    const saut = fin - 1;
+    const [entete, separateur, ...corps] = tableau.map(cellules);
+    const rangees = [entete, ...corps];
+    if (
+      !retenir(tableau.join('\n')) ||
+      separateur.length !== entete.length ||
+      corps.some(r => r.length !== entete.length)
+    ) {
+      i = saut;
+      continue;
+    }
+
+    const alignements = separateur.map(s =>
+      s.startsWith(':') && s.endsWith(':')
+        ? 'centre'
+        : s.endsWith(':')
+          ? 'droite'
+          : s.startsWith(':')
+            ? 'gauche'
+            : null
+    );
+    const largeurs = entete.map((_, c) =>
+      Math.max(3, ...rangees.map(r => largeur(r[c])))
+    );
+    const ecrire = r =>
+      `${indent}| ${r
+        .map((texte, c) => {
+          const espaces = largeurs[c] - largeur(texte);
+          const avant =
+            alignements[c] === 'droite'
+              ? espaces
+              : alignements[c] === 'centre'
+                ? Math.floor(espaces / 2)
+                : 0;
+          return ' '.repeat(avant) + texte + ' '.repeat(espaces - avant);
+        })
+        .join(' | ')} |`;
+    const tirets = largeurs.map((l, c) => {
+      const a = alignements[c];
+      const debut = a === 'gauche' || a === 'centre' ? ':' : '-';
+      const bout = a === 'droite' || a === 'centre' ? ':' : '-';
+      return debut + '-'.repeat(l - 2) + bout;
+    });
+    lignes.splice(
+      i,
+      tableau.length,
+      ecrire(entete),
+      `${indent}| ${tirets.join(' | ')} |`,
+      ...corps.map(ecrire)
+    );
+    i = saut;
+  }
+  return lignes.join('\n');
+}
 
 // ── Les places ─────────────────────────────────────────────────────────────
 
