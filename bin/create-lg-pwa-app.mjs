@@ -37,6 +37,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   SQUELETTE,
+  ceQueLAccueilGarde,
   choisirPort,
   choisirRef,
   launchJson,
@@ -66,7 +67,7 @@ create-lg-pwa-app — une application de la famille, en une commande.
   <id>              nom du dépôt : miss-exemple, mister-exemple
 
   --nom "<titre>"   nom affiché (défaut : déduit de l'id)
-  --description "…" ce que fait l'app : paquet, meta description, accroche de l'accueil
+  --description "…" ce que fait l'app : paquet, meta description, accroche (app.tagline)
   --from <ref>      branche ou étiquette du squelette (défaut : sa dernière étiquette, sinon main)
   --dir <chemin>    dossier de sortie (défaut : ./<id>)
   --publish         crée le dépôt GitHub, pousse, active Pages (exige gh)
@@ -150,6 +151,7 @@ const archive = join(travail, 'squelette.tar.gz');
 // « port is not defined » à la dernière ligne.
 let port = null;
 let aTraduire = [];
+let accueil = ceQueLAccueilGarde();
 try {
   console.log('· téléchargement du squelette');
   const url = `https://codeload.github.com/${DEPOT_SQUELETTE}/tar.gz/${ref}`;
@@ -214,7 +216,16 @@ try {
     );
   }
   aTraduire = descriptions.aTraduire;
-  writeFileSync(join(cible, 'README.md'), readme({ id, titre, description }));
+  // Ce que l'accueil garde quand l'exemple part se LIT dans l'écran engendré :
+  // l'accroche et le pied de page n'y sont que depuis pwa-starter-kit#67.
+  const ecranAccueil = join(cible, 'src/features/home/HomeScreen.tsx');
+  accueil = ceQueLAccueilGarde(
+    existsSync(ecranAccueil) ? readFileSync(ecranAccueil, 'utf8') : ''
+  );
+  writeFileSync(
+    join(cible, 'README.md'),
+    readme({ id, titre, description, accueil })
+  );
   console.log(`  ${fichiers.length} fichier(s) réécrit(s)`);
 
   // ── 3. Les dépendances ───────────────────────────────────────────────────
@@ -395,9 +406,18 @@ Ce qui reste, et que ce générateur ne fait pas :
   2. inscrire l'application dans apps-catalog.js du socle, par une PR,
      sans quoi elle n'apparaît pas chez ses sœurs${port ? ` — avec devPort: ${port}` : ''}
   3. remplacer public/favicon.svg puis : npm run icons
-  4. supprimer src/features/home/ — la fonctionnalité d'exemple
-  5. relire la description, que l'accueil affiche et que lisent les moteurs :
-     index.html (meta) et src/i18n/messages.ts (app.tagline, about.what)${
+  4. ${
+    accueil.accroche || accueil.piedDePage
+      ? `remplacer l'exemple de src/features/home/, en gardant sur l'accueil\n     ${[
+          accueil.accroche && "l'accroche (app.tagline)",
+          accueil.piedDePage && 'le pied de page',
+        ]
+          .filter(Boolean)
+          .join(' et ')} — le README dit pourquoi`
+      : "supprimer src/features/home/ — la fonctionnalité d'exemple"
+  }
+  5. relire la description : index.html (meta) et src/i18n/messages.ts
+     (app.tagline, about.what)${
        aTraduire.length
          ? `\n     — l'anglais porte le texte français, marqué « TODO traduire »`
          : ''

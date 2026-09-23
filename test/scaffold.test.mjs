@@ -25,6 +25,7 @@ import {
   PORT_SQUELETTE,
   SQUELETTE,
   SQUELETTE_TITRE,
+  ceQueLAccueilGarde,
   choisirPort,
   choisirRef,
   fichiersTexte,
@@ -261,7 +262,84 @@ test('le README rendu parle de la nouvelle application, pas du squelette', () =>
   // Et il rappelle ce qui reste à faire, dont la suppression de l'exemple et
   // l'anglais de la description, que le générateur n'écrit pas.
   assert.match(texte, /supprimer.*src\/features\/home/is);
-  assert.match(texte, /traduire l'anglais, marqué `TODO traduire`/);
+  assert.match(texte, /traduire l'anglais, marqué\s+`TODO traduire`/);
+});
+
+/** L'écran d'accueil du squelette depuis pwa-starter-kit#67, réduit à ce qui compte. */
+const ACCUEIL_AVEC_ACCROCHE = `/**
+ * Fait pour être supprimé — sauf sa première ligne, \`app.tagline\`, et sa
+ * dernière : le pied de page (\`AppFooter\` le prend au catalogue).
+ */
+export function HomeScreen() {
+  const { t } = useI18n();
+  return (
+    <>
+      <p>{t('app.tagline')}</p>
+      <h2>{t('home.title')}</h2>
+      <AppFooter repoUrl={REPO_URL} issues className="mt-8" />
+    </>
+  );
+}
+`;
+
+test('l’accueil garde ce que son écran porte vraiment : ni plus, ni moins', () => {
+  assert.deepEqual(ceQueLAccueilGarde(ACCUEIL_AVEC_ACCROCHE), {
+    accroche: true,
+    piedDePage: true,
+  });
+  // `v1.2.0` : ni accroche ni pied de page — la coquille rendait ce dernier.
+  // Les nommer dans un COMMENTAIRE ne compte pas : seuls l'appel et l'élément.
+  assert.deepEqual(
+    ceQueLAccueilGarde(
+      "// `app.tagline` et `AppFooter` : ailleurs.\nreturn <h1>{t('home.title')}</h1>;"
+    ),
+    { accroche: false, piedDePage: false }
+  );
+  // Un écran absent : rien à garder, et rien n'est inventé.
+  assert.deepEqual(ceQueLAccueilGarde(), {
+    accroche: false,
+    piedDePage: false,
+  });
+});
+
+test('le README garde l’accroche et le pied de page quand l’accueil les porte', async () => {
+  const pour = accueil =>
+    readme({
+      id: 'miss-exemple',
+      titre: 'Miss Exemple',
+      description: 'Une application d’exemple.',
+      accueil,
+    });
+
+  const avec = pour({ accroche: true, piedDePage: true });
+  // Plus de « supprimer src/features/home/ » : l'écran part avec sa phrase.
+  assert.doesNotMatch(avec, /supprimer `src\/features\/home\/`/);
+  assert.match(avec, /remplacer l'exemple de\s+`src\/features\/home\/`/);
+  assert.match(avec, /l'accroche `app\.tagline`/);
+  assert.match(avec, /pied de page de la famille/);
+
+  // Une seule des deux : seule celle-là est nommée.
+  const accrocheSeule = pour({ accroche: true, piedDePage: false });
+  assert.match(accrocheSeule, /l'accroche `app\.tagline`/);
+  assert.doesNotMatch(accrocheSeule, /pied de page/);
+
+  // Rien à garder (`v1.2.0`) : l'exemple se supprime, comme avant.
+  assert.match(
+    pour({ accroche: false, piedDePage: false }),
+    /\*\*supprimer `src\/features\/home\/`\*\*/
+  );
+
+  // Les quatre formes passent le `format:check` de l'application engendrée.
+  for (const accroche of [true, false]) {
+    for (const piedDePage of [true, false]) {
+      const texte = pour({ accroche, piedDePage });
+      assert.equal(
+        texte,
+        await prettier.format(texte, MARKDOWN),
+        JSON.stringify({ accroche, piedDePage })
+      );
+    }
+  }
 });
 
 test('le port : le prochain libre du catalogue, sinon celui qui suit le squelette', () => {

@@ -627,6 +627,28 @@ function reecrireDictionnaires(source, phrase) {
 }
 
 /**
+ * Ce que l'écran d'accueil engendré demande de garder quand l'exemple part.
+ *
+ * L'exemple des notes est fait pour disparaître, mais depuis
+ * pwa-starter-kit#67 `HomeScreen` s'ouvre sur l'accroche (`app.tagline`) — la
+ * seule phrase qu'un moteur associe à la page, et que personne ne remarque
+ * quand elle manque — et se ferme sur le pied de page de la famille. Avant
+ * (`v1.2.0`), il n'avait ni l'une ni l'autre : le pied de page était rendu par
+ * la coquille. Le générateur LIT l'écran engendré plutôt que de supposer une
+ * version du squelette, et le README comme le message final disent ce qu'il
+ * contient vraiment.
+ *
+ * @param {string} [source]  Le texte de `src/features/home/HomeScreen.tsx`.
+ * @returns {{ accroche: boolean, piedDePage: boolean }}
+ */
+export function ceQueLAccueilGarde(source = '') {
+  return {
+    accroche: /\bt\(\s*['"]app\.tagline['"]\s*\)/.test(source),
+    piedDePage: /<AppFooter\b/.test(source),
+  };
+}
+
+/**
  * Le README de la nouvelle application.
  *
  * Celui du squelette EXPLIQUE LE SQUELETTE : le garder ferait naître chaque
@@ -634,8 +656,30 @@ function reecrireDictionnaires(source, phrase) {
  * réécrirait — c'est ainsi qu'on trouve des README de gabarit en production.
  * Les décisions (`docs/adr/`), elles, sont conservées : elles s'appliquent bien
  * à la nouvelle application.
+ *
+ * « Supprimer l'exemple » ne se dit tel quel que si l'accueil n'a rien à
+ * garder : voir `ceQueLAccueilGarde`.
  */
-export function readme({ id, titre, description }) {
+export function readme({
+  id,
+  titre,
+  description,
+  accueil = ceQueLAccueilGarde(),
+}) {
+  const garde = [
+    accueil.accroche &&
+      `   - sa première ligne, l'accroche \`app.tagline\` : la seule phrase que les
+     moteurs associent à la page ;`,
+    accueil.piedDePage &&
+      `   - sa dernière, le pied de page de la famille, que la règle veut sur
+     l'accueil et que \`pwa-doctor --strict\` contrôle ;`,
+  ].filter(Boolean);
+  const exemple = garde.length
+    ? `3. écrire le métier dans \`src/features/\`, et **remplacer l'exemple de
+   \`src/features/home/\`** — il est là pour ça. L'accueil, lui, garde :
+${garde.join('\n')}`
+    : `3. écrire le métier dans \`src/features/\`, et **supprimer \`src/features/home/\`**,
+   la fonctionnalité d'exemple — elle est là pour ça ;`;
   return `# ${id}
 
 ${description}
@@ -674,15 +718,14 @@ il échoue à la moindre dette de conformité au parc.
 
 1. remplacer \`public/favicon.svg\`, puis \`npm run icons\` ;
 2. régénérer les captures du manifeste : \`npm run screenshots\` ;
-3. écrire le métier dans \`src/features/\`, et **supprimer \`src/features/home/\`**,
-   la fonctionnalité d'exemple — elle est là pour ça ;
+${exemple}
 4. ajuster la palette dans \`src/index.css\` et les couleurs de \`vite.config.ts\` ;
 5. si l'application a un backend : poser \`VITE_SUPABASE_URL\` et
    \`VITE_SUPABASE_ANON_KEY\` en **variables** du dépôt, et appliquer
    \`supabase/\` — sinon supprimer ce dossier et les deux workflows Supabase ;
-6. relire la description, que l'accueil affiche et que lisent les moteurs : la
-   meta d'\`index.html\`, \`app.tagline\` et \`about.what\` de
-   \`src/i18n/messages.ts\` — et traduire l'anglais, marqué \`TODO traduire\`.
+6. relire la description — la meta d'\`index.html\`, \`app.tagline\` et
+   \`about.what\` de \`src/i18n/messages.ts\` — et traduire l'anglais, marqué
+   \`TODO traduire\`.
 
 ## Les décisions
 
