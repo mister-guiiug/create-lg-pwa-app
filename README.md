@@ -79,7 +79,8 @@ fait pas de bruit, il ne fait rien.
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Téléchargement | l'archive du squelette à sa **dernière étiquette**, `v1.2.0` depuis le 06/09/2026 (ou à la référence demandée, `--from main` pour la pointe), sans son historique                                  |
 | Identité       | l'identifiant **et** le nom affiché, tableaux Markdown réalignés ; un contrôle refuse toute trace de l'identifiant, mais le nom court « Starter Kit » d'`index.html` n'est ni remplacé ni contrôlé |
-| Description    | `--description` à chaque place où le squelette se décrit ; un contrôle refuse qu'une de ses phrases subsiste                                                                                       |
+| Description    | `--description`, 70 caractères au moins, à chaque place où le squelette se décrit ; un contrôle refuse qu'une de ses phrases subsiste                                                              |
+| Titre          | `--titre`, 50 caractères au moins, dans `<title>` et `og:title` ; un contrôle refuse que le titre du squelette subsiste                                                                            |
 | README         | réécrit pour la nouvelle application : celui du squelette parle du squelette                                                                                                                       |
 | `npm install`  | par **npm 10.9.8**, figé dans le générateur ; la CI de la famille, elle, tourne en npm 11 (Node 26.10.0)                                                                                           |
 | Port           | le prochain port de développement libre du catalogue, dans `.claude/launch.json` et `vite.config.ts`, à l'installation seulement ; `supabase/config.toml` garde 5240                               |
@@ -118,11 +119,10 @@ naître chaque application en se présentant comme le squelette, **auprès des
 moteurs d'abord** : la meta description est aussi ce que le socle sert aux
 robots sans JavaScript et ce qu'il met dans les données structurées.
 
-Depuis `v1.2.0`, le squelette se décrit aussi dans le `<title>` et l'`og:title`
-d'`index.html` (« … - squelette d'application web installable »), dans
-`content/pages/creer-une-pwa-avec-react-et-vite.md` et dans
-`public/og-image.jpg`, que le générateur ne touche pas : une application
-engendrée depuis `main` s'y présente encore comme le squelette.
+Depuis `v1.2.0`, le squelette se décrit aussi dans ses pages de contenu
+(`content/pages/`) et dans `public/og-image.jpg`, que le générateur ne touche
+pas : une application engendrée depuis `main` s'y présente encore comme le
+squelette. Son titre de page, lui, est traité : voir plus bas.
 
 Le générateur ne connaît pas ces phrases, qui changent d'une étiquette du
 squelette à l'autre : il réécrit ce qui **occupe ces places**, retient ce
@@ -142,6 +142,41 @@ disent de remplacer la fonctionnalité d'exemple de `src/features/home/` —
 mais pas de supprimer l'écran entier quand il porte l'accroche et le pied de
 page de la famille. Le générateur le LIT dans l'écran engendré, sans supposer
 de version du squelette : à `v1.2.0`, l'accueil n'avait ni l'une ni l'autre.
+
+## Le titre de la page
+
+**Le `<title>` est la ligne que les moteurs affichent**, et le socle le sert
+aussi en h1 aux robots sans JavaScript et le reprend dans ses données
+structurées. Depuis pwa-starter-kit#72, le squelette y écrit
+« PWA Starter Kit - squelette d'application web installable », allongé pour
+la règle de Bing. Le générateur le traite comme la description : `--titre` en
+prend la place dans `<title>` et `og:title` (et `twitter:title` s'il existe),
+et la naissance échoue si le titre du squelette subsiste ailleurs.
+
+**Les règles SEO du parc sont vérifiées avant tout téléchargement.**
+`pwa-doctor --strict` termine la construction de l'application, et une dette
+suffit à la refuser : un titre de moins de 50 caractères (`seo-title-length`)
+ou une description de moins de 70 (`seo-description-length`) faisaient échouer
+la naissance après l'installation, en laissant un dossier qui bloque la
+tentative suivante. Le générateur les refuse désormais d'entrée. Il signale,
+sans s'arrêter, un tiret cadratin dans le titre (le parc écrit « - ») et une
+description de plus de 160 caractères, que les moteurs tronquent.
+
+**Sans `--titre` ni `--description`, les textes sont vrais mais
+génériques** : « Miss X - application web installable de la famille
+mister-guiiug », et une description du même ordre, conformes même pour un nom
+d'une lettre. Le message final et le README engendré demandent d'y dire ce que
+fait l'application. Les titres du parc ont la forme « Nom - ce qu'elle fait »,
+de 54 à 58 caractères : « Miss Devises - convertisseur euro avec billets et
+pièces ».
+
+**La mise en page suit la longueur du texte.** Un `<title>` tient sur sa ligne
+jusqu'à 61 caractères ; au-delà, Prettier le replie mot à mot, et le
+générateur aussi. Le nom affiché a le même effet dans le code : depuis la
+pointe du squelette, un nom de six caractères au plus faisait tenir sur une
+ligne l'appel `toHaveText('…')` de `e2e/smoke.spec.ts`, que Prettier
+refermait. Un appel dont la seule chaîne porte le nom est rangé comme Prettier
+le range.
 
 ## Ce qu'il ne fait pas, et pourquoi
 
@@ -163,8 +198,9 @@ de version du squelette : à `v1.2.0`, l'accueil n'avait ni l'une ni l'autre.
 
 ```
 <id>              nom du dépôt : miss-exemple, mister-exemple
---nom "<titre>"   nom affiché (défaut : déduit de l'id)
---description "…" ce que fait l'app : paquet, meta description, accroche de l'accueil
+--nom "<nom>"     nom affiché (défaut : déduit de l'id)
+--titre "…"       titre de la page, 50 caractères au moins : <title>, og:title
+--description "…" ce que fait l'app, 70 à 160 caractères : paquet, meta description, accroche de l'accueil
 --from <ref>      branche ou étiquette du squelette (défaut : sa dernière étiquette, sinon main)
 --dir <chemin>    dossier de sortie (défaut : ./<id>)
 --publish         crée le dépôt GitHub, pousse, active Pages (exige gh)
