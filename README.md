@@ -3,12 +3,15 @@
 Une application PWA de la famille `miss-*` / `mister-*`, en une commande.
 
 ```bash
-npx github:mister-guiiug/create-lg-pwa-app miss-exemple
+npx --allow-git=root github:mister-guiiug/create-lg-pwa-app miss-exemple
 ```
 
 ```bash
-npx github:mister-guiiug/create-lg-pwa-app miss-exemple --publish
+npx --allow-git=root github:mister-guiiug/create-lg-pwa-app miss-exemple --publish
 ```
+
+**`--allow-git=root` est nécessaire depuis npm 12**, et se place avant le
+paquet : voir [plus bas](#--allow-gitroot-depuis-npm-12).
 
 **Sans `--from`, l'application part de la dernière étiquette du squelette,
 `v1.2.0` du 06/09/2026, et non de la pointe de `main`**, que seul
@@ -27,6 +30,27 @@ que le moindre `.npmrc` n'existe. Son installation, elle, lit le registre npm
 `--no-install`. Sans jeton, elle échoue après la copie du squelette, et le
 dossier `./<id>` qui reste bloque une seconde tentative tant qu'on ne l'a pas
 effacé.
+
+### `--allow-git=root`, depuis npm 12
+
+**npm 12 refuse par défaut tout paquet tiré de git** : `allow-git` y vaut
+`none`, et `npx github:…` s'arrête sur `EALLOWGIT` (« Fetching packages of
+type "git" have been disabled »). C'est ce qui a arrêté la naissance de
+miss-devises, le 01/10/2026. `--allow-git=root` n'ouvre que le paquet nommé
+sur la ligne de commande, ce générateur sans dépendance, et rien de ce qu'il
+tirerait. L'option se place **avant** le paquet : après lui, `npx` la passe
+au générateur, et refuse quand même.
+
+Relevé le 01/10/2026, un `npx` par version de npm, chacun avec un cache vide :
+
+| npm              | `allow-git` par défaut | sans l'option | avec `--allow-git=root` |
+| ---------------- | ---------------------- | ------------- | ----------------------- |
+| 10.9.8           | inconnu, ignoré        | démarre       | démarre                 |
+| 11.19.1          | `all`                  | démarre       | démarre                 |
+| 12.0.2 et 12.2.0 | `none`                 | `EALLOWGIT`   | démarre                 |
+
+Un clone du dépôt reste l'autre voie, qui ne passe pas par `npx` :
+`node bin/create-lg-pwa-app.mjs <id>`.
 
 ## Il ne contient aucun gabarit d'application
 
@@ -61,7 +85,7 @@ fait pas de bruit, il ne fait rien.
 | Port           | le prochain port de développement libre du catalogue, dans `.claude/launch.json` et `vite.config.ts`, à l'installation seulement ; `supabase/config.toml` garde 5240                               |
 | Construction   | `npm run build` (budget de poids et `pwa-doctor --strict`) sur l'application engendrée, avant toute publication                                                                                    |
 | Premier commit | conventionnel, sur `main`                                                                                                                                                                          |
-| `--publish`    | dépôt public, poussée, **Pages activées par un PUT**, `homepage` et sujets sur la fiche du dépôt                                                                                                   |
+| `--publish`    | dépôt public, poussée, **Pages créées puis passées en workflow par un PUT**, relues, `homepage` et sujets sur la fiche du dépôt                                                                    |
 
 Les deux dernières lignes sont sa vraie valeur. Substituer un nom prend dix
 lignes ; ce que personne n'avait automatisé, ce sont les gestes d'après et
@@ -73,10 +97,15 @@ leurs pièges :
   11.19.1 sur Node 26.10.0, relevé le 27/09/2026), quand le générateur installe
   encore en npm 10.9.8 ; or npm 10 retire les champs `libc` qu'écrit npm 11, et
   que le lockfile du squelette porte à `main` ;
-- **Pages créées par un POST** rendent bien `build_type: workflow`, mais GitHub
-  garde `source: {branch, path}` et le constructeur Jekyll reprend la main à
-  chaque poussée — il republie le README rendu à la place de l'application. Le
-  symptôme est un `<title>` qui vaut le nom du dépôt.
+- **Pages : ni un POST seul, ni un PUT seul.** Créées par un POST, elles
+  rendent bien `build_type: workflow`, mais GitHub garde
+  `source: {branch, path}` et le constructeur Jekyll reprend la main à chaque
+  poussée — il republie le README rendu à la place de l'application. Le
+  symptôme est un `<title>` qui vaut le nom du dépôt. Le PUT seul, lui, rend
+  404 sur un dépôt neuf, où le site n'existe pas encore : miss-devises est née
+  sans Pages le 01/10/2026. Le générateur crée donc le site s'il manque, le
+  passe en workflow par un PUT, puis relit `build_type`, et s'arrête s'il ne
+  vaut pas `workflow`.
 
 ## La description
 
@@ -161,8 +190,10 @@ n'échoue ; on s'en aperçoit en production.
 La CI y ajoute le seul test que les tests unitaires ne peuvent pas faire :
 engendrer depuis le squelette **réel**, et vérifier l'accord entre les deux
 dépôts. Elle engendre depuis sa dernière étiquette, que l'application installe,
-construit et passe à son propre `format:check` ; puis depuis la **pointe de
-`main`**, dont l'arbre passe Prettier lui aussi — ce qui a été ajouté au
+construit et passe à son propre `format:check`, `.claude/launch.json` du
+générateur compris : sans installation, l'arbre garderait celui du squelette,
+et la CI l'écrit donc avant ce contrôle. Puis elle engendre depuis la **pointe
+de `main`**, dont l'arbre passe Prettier lui aussi — ce qui a été ajouté au
 squelette depuis l'étiquette n'est éprouvé nulle part ailleurs.
 
 ## Licence

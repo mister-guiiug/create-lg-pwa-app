@@ -2,10 +2,12 @@
  * Le cœur PUR du générateur : ce qui se teste sans réseau, sans `git` et sans
  * `gh`.
  *
- * Tout ce qui touche au monde extérieur — téléchargement, dépôt, Pages — vit
- * dans `create-lg-pwa-app.mjs`. Cette séparation n'est pas décorative : la
- * substitution d'identité est la seule partie qui peut casser en silence, et
- * c'est donc la seule qu'il faut pouvoir éprouver à chaque commit.
+ * Tout ce qui touche au monde extérieur (téléchargement, dépôt, appels à
+ * `gh`) vit dans `create-lg-pwa-app.mjs`. Pour Pages, seule la décision est
+ * ici : `activerPages` reçoit l'appel à l'API en paramètre. Cette séparation
+ * n'est pas décorative : la substitution d'identité est la seule partie qui
+ * peut casser en silence, et c'est donc la seule qu'il faut pouvoir éprouver à
+ * chaque commit.
  */
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
@@ -104,30 +106,27 @@ export function choisirPort(catalogue) {
 /**
  * Le `.claude/launch.json` d'une application : le serveur de développement,
  * sur SON port, pour l'aperçu intégré de l'éditeur.
+ *
+ * ÉCRIT COMME PRETTIER LE RANGE, PAS PAR `JSON.stringify`, qui met chaque
+ * argument sur sa ligne. Prettier referme un tableau qui tient sur une ligne,
+ * et `format:check` a rougi la première CI de miss-devises (01/10/2026) pour ce
+ * seul fichier. Celui-ci tient toujours : 77 colonnes au plus, puisqu'un port a
+ * cinq chiffres au plus.
  */
 export function launchJson(id, port) {
-  return `${JSON.stringify(
+  const args = ['run', 'dev', '--', '--port', String(port), '--strictPort'];
+  return `{
+  "version": "0.0.1",
+  "configurations": [
     {
-      version: '0.0.1',
-      configurations: [
-        {
-          name: id,
-          runtimeExecutable: 'npm',
-          runtimeArgs: [
-            'run',
-            'dev',
-            '--',
-            '--port',
-            String(port),
-            '--strictPort',
-          ],
-          port,
-        },
-      ],
-    },
-    null,
-    2
-  )}\n`;
+      "name": ${JSON.stringify(id)},
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [${args.map(a => JSON.stringify(a)).join(', ')}],
+      "port": ${port}
+    }
+  ]
+}
+`;
 }
 
 /**
@@ -141,6 +140,79 @@ export function remplacerPort(viteConfig, port) {
     /devPortOf\(\s*APP_ID\s*,\s*5240\s*\)/,
     `devPortOf(APP_ID, ${port})`
   );
+}
+
+/**
+ * Une réponse de `gh api -i` : la ligne de statut, les en-têtes, une ligne
+ * vide, puis le corps. `gh` sort en erreur sur tout statut d'erreur ; seul le
+ * statut dit si c'est le 404 d'un site qui n'existe pas encore ou une panne.
+ *
+ * @param {string} sortie  Ce que `gh api -i` écrit sur sa sortie standard.
+ * @returns {{ statut: number, corps: any }} `statut` vaut 0 sans ligne de
+ *   statut : `gh` a échoué avant d'atteindre l'API.
+ */
+export function lireReponseGh(sortie) {
+  const statut = Number(/^HTTP\/[\d.]+ (\d{3})\b/.exec(sortie)?.[1] ?? 0);
+  const blanc = /\r?\n\r?\n/.exec(sortie);
+  const brut = blanc ? sortie.slice(blanc.index + blanc[0].length).trim() : '';
+  if (!brut) return { statut, corps: null };
+  try {
+    return { statut, corps: JSON.parse(brut) };
+  } catch {
+    return { statut, corps: brut };
+  }
+}
+
+/**
+ * Pages en mode workflow, sur le dépôt qui vient de naître.
+ *
+ * LE PUT SEUL RENDAIT 404 : il modifie un site, et un dépôt neuf n'en a pas
+ * encore. miss-devises est ainsi née sans Pages (01/10/2026).
+ *
+ * LE POST SEUL NE SUFFIT PAS NON PLUS. La création rend bien `build_type:
+ * workflow`, mais GitHub garde `source: {branch, path}` et le constructeur
+ * Jekyll reprend la main à chaque poussée : il republie le README rendu à la
+ * place de l'application, et le `<title>` vaut le nom du dépôt.
+ *
+ * D'où l'ordre : créer le site s'il manque, le passer en workflow par un PUT,
+ * puis le relire. `source` reste rempli après le PUT (relevé sur
+ * miss-devises) : c'est `build_type` qui fait foi.
+ *
+ * @param {(methode: string, chemin: string, champs?: Record<string, string>) => { statut: number, corps: any }} api
+ *   Un appel à l'API GitHub : `gh api` dans le générateur, une fausse API
+ *   dans les tests.
+ * @param {string} depot  `propriétaire/nom`.
+ */
+export function activerPages(api, depot) {
+  const chemin = `repos/${depot}/pages`;
+  const workflow = { build_type: 'workflow' };
+  const reussi = r => r.statut >= 200 && r.statut < 300;
+  const echec = (geste, r) =>
+    new Error(
+      `Pages, ${geste} : HTTP ${r.statut}${r.corps?.message ? ` (${r.corps.message})` : ''}`
+    );
+
+  const lu = api('GET', chemin);
+  if (lu.statut === 404) {
+    const creation = api('POST', chemin, workflow);
+    // 409 : le site est né entre-temps ; le PUT qui suit suffit.
+    if (!reussi(creation) && creation.statut !== 409) {
+      throw echec('création', creation);
+    }
+  } else if (!reussi(lu)) {
+    throw echec('lecture', lu);
+  }
+  const passage = api('PUT', chemin, workflow);
+  if (!reussi(passage)) throw echec('passage en workflow', passage);
+
+  const relu = api('GET', chemin);
+  if (!reussi(relu)) throw echec('relecture', relu);
+  if (relu.corps?.build_type !== 'workflow') {
+    throw new Error(
+      `Pages : build_type vaut « ${relu.corps?.build_type} » après le PUT, « workflow » attendu. ` +
+        `À reprendre : gh api -X PUT ${chemin} -f build_type=workflow`
+    );
+  }
 }
 
 /**

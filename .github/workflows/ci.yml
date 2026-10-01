@@ -103,6 +103,19 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
 
+      # `--no-install` saute l'écriture de `.claude/launch.json` : l'arbre garde
+      # celui du squelette, et le contrôle qui suit ne voyait jamais celui du
+      # générateur. La première CI de miss-devises a rougi pour lui seul
+      # (01/10/2026). Écrit ici par la même fonction, il passe par le Prettier
+      # et la configuration de l'application.
+      - name: Le launch.json du générateur, à sa place dans l'arbre
+        run: |
+          mkdir -p /tmp/engendree/.claude
+          node --input-type=module -e "
+            import { launchJson } from './bin/scaffold.mjs';
+            process.stdout.write(launchJson('miss-essai-ci', 5299));
+          " > /tmp/engendree/.claude/launch.json
+
       # La première CI de l'application joue `format:check`, sur TOUT l'arbre.
       # Un nom ou une phrase d'une autre longueur change une mise en page — une
       # ligne qui tient ou non, un tableau Markdown désaligné. Vérifier les

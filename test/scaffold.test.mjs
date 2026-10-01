@@ -25,11 +25,13 @@ import {
   PORT_SQUELETTE,
   SQUELETTE,
   SQUELETTE_TITRE,
+  activerPages,
   ceQueLAccueilGarde,
   choisirPort,
   choisirRef,
   fichiersTexte,
   launchJson,
+  lireReponseGh,
   readme,
   realignerTableaux,
   remplacerPort,
@@ -374,6 +376,45 @@ test('launch.json et vite.config portent le même port, et 5240 ne survit pas', 
   assert.equal(remplacerPort('export default {}', 5209), 'export default {}');
 });
 
+test('launch.json sort tel que Prettier le range : la première CI le relit', async () => {
+  // L'application le relit par `prettier --check .`, avec la configuration du
+  // socle, dont `prettier.config.js` est la copie vérifiée. `filepath` fait
+  // choisir l'analyseur par le nom du fichier, comme cette commande.
+  const options = { ...configPrettier, filepath: '.claude/launch.json' };
+  for (const [id, port] of [
+    ['miss-x', 5201],
+    ['miss-devises', 5213],
+    // Un nom qui déborde de la ligne : Prettier ne coupe pas une chaîne.
+    ['mister-une-application-au-nom-assez-long-pour-deborder-la-ligne', 5299],
+    // Le plus large des ports : le tableau tient encore sur sa ligne.
+    ['miss-exemple', 65535],
+  ]) {
+    const texte = launchJson(id, port);
+    assert.ok(
+      await prettier.check(texte, options),
+      `${id}, ${port} :\n${texte}`
+    );
+    assert.deepEqual(JSON.parse(texte), {
+      version: '0.0.1',
+      configurations: [
+        {
+          name: id,
+          runtimeExecutable: 'npm',
+          runtimeArgs: [
+            'run',
+            'dev',
+            '--',
+            '--port',
+            `${port}`,
+            '--strictPort',
+          ],
+          port,
+        },
+      ],
+    });
+  }
+});
+
 test('la référence : demandée, sinon la dernière étiquette, sinon main', () => {
   // `--from` l'emporte toujours, étiquettes ou pas.
   assert.deepEqual(choisirRef('main', [{ name: 'v1.0.0' }]), {
@@ -696,5 +737,147 @@ test('realignerTableaux ne touche ni un bloc de code, ni ce qu’il ne comprend 
   assert.equal(
     realignerTableaux(compact, () => false),
     compact
+  );
+});
+
+// ── GitHub Pages ──────────────────────────────────────────────────────────
+
+/**
+ * Ce que `gh api -i` écrit, relevé le 01/10/2026 et réduit à deux en-têtes :
+ * la ligne de statut finit par `\n`, les en-têtes par `\r\n`.
+ */
+const GH_404 =
+  'HTTP/2.0 404 Not Found\n' +
+  'Access-Control-Allow-Origin: *\r\n' +
+  "Content-Security-Policy: default-src 'none'\r\n" +
+  '\r\n' +
+  '{"message":"Not Found","documentation_url":"https://docs.github.com/rest/pages/pages#get-a-apiname-pages-site","status":"404"}';
+const GH_200 =
+  'HTTP/2.0 200 OK\n' +
+  'Access-Control-Allow-Origin: *\r\n' +
+  'Cache-Control: private, max-age=60, s-maxage=60\r\n' +
+  '\r\n' +
+  '{"url":"https://api.github.com/repos/mister-guiiug/miss-devises/pages","status":null,"html_url":"https://mister-guiiug.github.io/miss-devises/","build_type":"workflow","source":{"branch":"main","path":"/"}}';
+
+test('une réponse de gh api -i se lit par sa ligne de statut', () => {
+  const absent = lireReponseGh(GH_404);
+  assert.equal(absent.statut, 404);
+  assert.equal(absent.corps.message, 'Not Found');
+
+  const site = lireReponseGh(GH_200);
+  assert.equal(site.statut, 200);
+  assert.equal(site.corps.build_type, 'workflow');
+
+  // Un PUT réussi répond sans corps.
+  assert.deepEqual(
+    lireReponseGh(
+      'HTTP/2.0 204 No Content\nAccess-Control-Allow-Origin: *\r\n\r\n'
+    ),
+    { statut: 204, corps: null }
+  );
+  // `gh` a échoué avant l'API (pas de session, pas de réseau) : aucun statut.
+  assert.deepEqual(lireReponseGh(''), { statut: 0, corps: null });
+});
+
+/**
+ * Une fausse API GitHub : elle rend les réponses données, dans l'ordre, et
+ * garde les appels reçus. Un appel de trop est une erreur.
+ */
+function fausseApi(...reponses) {
+  const appels = [];
+  const api = (methode, chemin, champs) => {
+    appels.push(
+      [methode, chemin, champs && JSON.stringify(champs)]
+        .filter(Boolean)
+        .join(' ')
+    );
+    const reponse = reponses.shift();
+    if (!reponse) throw new Error(`appel inattendu : ${methode} ${chemin}`);
+    return reponse;
+  };
+  return { api, appels };
+}
+
+const DEPOT = 'mister-guiiug/miss-exemple';
+const SITE = `repos/${DEPOT}/pages`;
+const EN_WORKFLOW = `${SITE} {"build_type":"workflow"}`;
+const SOURCE = { branch: 'main', path: '/' };
+
+test('Pages sur un dépôt neuf : créées, passées en workflow, relues', () => {
+  // La séquence de miss-devises, le 01/10/2026 : pas de site, le POST le crée
+  // en gardant `source`, le PUT le passe en workflow, la relecture le confirme.
+  const { api, appels } = fausseApi(
+    { statut: 404, corps: { message: 'Not Found' } },
+    { statut: 201, corps: { build_type: 'workflow', source: SOURCE } },
+    { statut: 204, corps: null },
+    { statut: 200, corps: { build_type: 'workflow', source: SOURCE } }
+  );
+  activerPages(api, DEPOT);
+  assert.deepEqual(appels, [
+    `GET ${SITE}`,
+    `POST ${EN_WORKFLOW}`,
+    `PUT ${EN_WORKFLOW}`,
+    `GET ${SITE}`,
+  ]);
+});
+
+test('Pages déjà là, ou nées entre-temps : le PUT suffit', () => {
+  const existant = fausseApi(
+    { statut: 200, corps: { build_type: 'legacy', source: SOURCE } },
+    { statut: 204, corps: null },
+    { statut: 200, corps: { build_type: 'workflow', source: SOURCE } }
+  );
+  activerPages(existant.api, DEPOT);
+  assert.deepEqual(existant.appels, [
+    `GET ${SITE}`,
+    `PUT ${EN_WORKFLOW}`,
+    `GET ${SITE}`,
+  ]);
+
+  // Le site est né entre la lecture et la création : 409, puis le PUT.
+  const course = fausseApi(
+    { statut: 404, corps: null },
+    { statut: 409, corps: { message: 'GitHub Pages is already enabled.' } },
+    { statut: 204, corps: null },
+    { statut: 200, corps: { build_type: 'workflow' } }
+  );
+  activerPages(course.api, DEPOT);
+  assert.deepEqual(course.appels, [
+    `GET ${SITE}`,
+    `POST ${EN_WORKFLOW}`,
+    `PUT ${EN_WORKFLOW}`,
+    `GET ${SITE}`,
+  ]);
+});
+
+test('Pages : un échec se dit, et un site relu hors workflow aussi', () => {
+  const activer =
+    (...reponses) =>
+    () =>
+      activerPages(fausseApi(...reponses).api, DEPOT);
+  assert.throws(
+    activer({ statut: 403, corps: { message: 'Must have admin rights' } }),
+    /lecture : HTTP 403 \(Must have admin rights\)/
+  );
+  assert.throws(
+    activer(
+      { statut: 404, corps: null },
+      { statut: 422, corps: { message: 'Validation Failed' } }
+    ),
+    /création : HTTP 422/
+  );
+  assert.throws(
+    activer({ statut: 200, corps: {} }, { statut: 400, corps: null }),
+    /passage en workflow : HTTP 400/
+  );
+  // Le PUT a répondu, mais le site relu n'est pas en workflow : Jekyll
+  // publierait le README. Le message dit comment reprendre à la main.
+  assert.throws(
+    activer(
+      { statut: 200, corps: {} },
+      { statut: 204, corps: null },
+      { statut: 200, corps: { build_type: 'legacy' } }
+    ),
+    /build_type vaut « legacy ».*gh api -X PUT repos\/mister-guiiug\/miss-exemple\/pages -f build_type=workflow/
   );
 });
