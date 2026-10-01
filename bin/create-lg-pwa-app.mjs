@@ -2,8 +2,13 @@
 /**
  * create-lg-pwa-app — une application de la famille, en une commande.
  *
- *   npx github:mister-guiiug/create-lg-pwa-app miss-exemple
- *   npx github:mister-guiiug/create-lg-pwa-app miss-exemple --publish
+ *   npx --allow-git=root github:mister-guiiug/create-lg-pwa-app miss-exemple
+ *   npx --allow-git=root github:mister-guiiug/create-lg-pwa-app miss-exemple --publish
+ *
+ * `--allow-git=root` AVANT LE PAQUET. Depuis npm 12, `allow-git` vaut `none`
+ * par défaut, et `npx github:` échoue en EALLOWGIT. `root` n'ouvre que le
+ * paquet nommé, ce générateur sans dépendance ; npm 10 et 11 l'acceptent sans
+ * rien changer. Placée après le paquet, l'option irait au générateur.
  *
  * POURQUOI `npx github:` ET PAS UN PAQUET PUBLIÉ. Le socle vit sur GitHub
  * Packages, qui exige un jeton **même pour un paquet public** : un
@@ -19,9 +24,10 @@
  * SA VALEUR EST DU CÔTÉ GITHUB. Substituer un nom prend dix lignes ; ce que
  * personne n'avait automatisé, et qui coûtait une demi-journée avec ses pièges,
  * ce sont les gestes d'après : le lockfile écrit par la bonne version de npm,
- * Pages activées par un PUT et non un POST, le premier commit conventionnel.
+ * Pages créées puis passées en workflow par un PUT, le premier commit
+ * conventionnel.
  */
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import {
   cpSync,
   existsSync,
@@ -37,10 +43,12 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   SQUELETTE,
+  activerPages,
   ceQueLAccueilGarde,
   choisirPort,
   choisirRef,
   launchJson,
+  lireReponseGh,
   readme,
   remplacerPort,
   substituer,
@@ -62,7 +70,7 @@ if (!id || drapeau('help')) {
   console.log(`
 create-lg-pwa-app — une application de la famille, en une commande.
 
-  npx github:mister-guiiug/create-lg-pwa-app <id> [options]
+  npx --allow-git=root github:mister-guiiug/create-lg-pwa-app <id> [options]
 
   <id>              nom du dépôt : miss-exemple, mister-exemple
 
@@ -130,6 +138,36 @@ function run(exe, argv, options = {}) {
 }
 const dispo = exe =>
   spawnSync(exe, ['--version'], { stdio: 'ignore' }).status === 0;
+
+/**
+ * Un appel à l'API GitHub, par `gh`, qui en porte l'authentification. `-i`
+ * fait précéder le corps de la ligne de statut : c'est elle que lit
+ * `activerPages`, pas le code de sortie de `gh`.
+ */
+function ghApi(methode, chemin, champs = {}) {
+  const r = spawnSync(
+    'gh',
+    [
+      'api',
+      '-i',
+      '-X',
+      methode,
+      chemin,
+      ...Object.entries(champs).flatMap(([cle, valeur]) => [
+        '-f',
+        `${cle}=${valeur}`,
+      ]),
+    ],
+    { encoding: 'utf8' }
+  );
+  const reponse = lireReponseGh(r.stdout ?? '');
+  if (!reponse.statut) {
+    throw new Error(
+      `gh api -X ${methode} ${chemin} → ${r.error?.message ?? r.stderr?.trim()}`
+    );
+  }
+  return reponse;
+}
 
 const provenance = {
   demandée: '--from',
@@ -346,24 +384,12 @@ try {
       { cwd: cible }
     );
 
-    // PAGES : UN PUT, JAMAIS UN POST. La création par POST rend bien
-    // `build_type: workflow`, mais GitHub garde `source: {branch, path}` et le
-    // constructeur Jekyll reprend la main à chaque poussée — il republie le
-    // README rendu à la place de l'application. Le symptôme est un `<title>`
-    // qui vaut le nom du dépôt.
+    // PAGES : CRÉÉES S'IL LE FAUT, PASSÉES EN WORKFLOW PAR UN PUT, RELUES. Le
+    // PUT seul rend 404 sur un dépôt neuf, le POST seul laisse Jekyll
+    // republier le README : `activerPages` dit pourquoi les deux, dans cet
+    // ordre.
     console.log('· Pages en mode workflow');
-    execFileSync(
-      'gh',
-      [
-        'api',
-        '-X',
-        'PUT',
-        `repos/mister-guiiug/${id}/pages`,
-        '-f',
-        'build_type=workflow',
-      ],
-      { stdio: 'ignore' }
-    );
+    activerPages(ghApi, `mister-guiiug/${id}`);
 
     // L'adresse est connue avant le premier déploiement : elle va sur la
     // fiche du dépôt, avec les deux sujets qui rangent l'application dans la
