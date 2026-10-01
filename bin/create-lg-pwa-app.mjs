@@ -47,11 +47,14 @@ import {
   ceQueLAccueilGarde,
   choisirPort,
   choisirRef,
+  controlerTextes,
+  descriptionParDefaut,
   launchJson,
   lireReponseGh,
   readme,
   remplacerPort,
   substituer,
+  titreDePageParDefaut,
   titreDepuisId,
   validerId,
 } from './scaffold.mjs';
@@ -74,8 +77,9 @@ create-lg-pwa-app — une application de la famille, en une commande.
 
   <id>              nom du dépôt : miss-exemple, mister-exemple
 
-  --nom "<titre>"   nom affiché (défaut : déduit de l'id)
-  --description "…" ce que fait l'app : paquet, meta description, accroche (app.tagline)
+  --nom "<nom>"     nom affiché (défaut : déduit de l'id)
+  --titre "…"       titre de la page, 50 caractères au moins : <title>, og:title
+  --description "…" ce que fait l'app, 70 à 160 caractères : paquet, meta description, accroche (app.tagline)
   --from <ref>      branche ou étiquette du squelette (défaut : sa dernière étiquette, sinon main)
   --dir <chemin>    dossier de sortie (défaut : ./<id>)
   --publish         crée le dépôt GitHub, pousse, active Pages (exige gh)
@@ -97,8 +101,19 @@ if (verdict.horsConvention) {
 }
 
 const titre = option('nom') ?? titreDepuisId(id);
-const description =
-  option('description') ?? `${titre} — application PWA de la famille.`;
+const description = option('description') ?? descriptionParDefaut(titre);
+const titrePage = option('titre') ?? titreDePageParDefaut(titre);
+
+// AVANT TOUT TÉLÉCHARGEMENT : ce que `pwa-doctor --strict` refuserait à la
+// construction de l'application est refusé ici, quand rien n'est encore écrit.
+const controle = controlerTextes({ titrePage, description });
+for (const avertissement of controle.avertissements) {
+  console.warn(`⚠ ${avertissement}`);
+}
+if (controle.refus.length) {
+  for (const refus of controle.refus) console.error(`✖ ${refus}`);
+  process.exit(1);
+}
 /**
  * Les étiquettes du squelette, ou rien : hors ligne, ou API indisponible, on
  * retombe sur `main` en le disant — une naissance ne doit pas dépendre d'un
@@ -228,10 +243,11 @@ try {
 
   // ── 2. L'identité ────────────────────────────────────────────────────────
   console.log('· substitution de l’identité');
-  const { fichiers, restes, descriptions } = substituer(cible, {
+  const { fichiers, restes, descriptions, titres } = substituer(cible, {
     id,
     titre,
     description,
+    titrePage,
   });
   if (restes.length) {
     throw new Error(`le nom du squelette subsiste dans : ${restes.join(', ')}`);
@@ -251,6 +267,18 @@ try {
   for (const place of descriptions.manquantes) {
     console.warn(
       `⚠ description non posée — ${place} introuvable : le squelette a-t-il déplacé ce texte ?`
+    );
+  }
+  // LE TITRE DE LA PAGE, DE MÊME : le socle le sert en h1 aux robots. Que le
+  // squelette s'y présente encore ailleurs, et la naissance échoue.
+  if (titres.restes.length) {
+    throw new Error(
+      `le titre de page du squelette subsiste dans : ${titres.restes.join(', ')}`
+    );
+  }
+  for (const place of titres.manquantes) {
+    console.warn(
+      `⚠ titre de la page non posé : ${place} introuvable, le squelette a-t-il déplacé ce texte ?`
     );
   }
   aTraduire = descriptions.aTraduire;
@@ -421,6 +449,19 @@ try {
   rmSync(travail, { recursive: true, force: true });
 }
 
+// Les textes par défaut passent les règles du parc, mais ne disent rien de
+// l'application : le message final le rappelle.
+const generiques = {
+  titre: 'le titre par défaut est vrai mais générique',
+  description: 'la description par défaut est vraie mais générique',
+  'titre description':
+    'le titre et la description par défaut sont vrais mais génériques',
+}[
+  [!option('titre') && 'titre', !option('description') && 'description']
+    .filter(Boolean)
+    .join(' ')
+];
+
 console.log(`
 ✔ ${cible}${port ? `  (port de développement : ${port})` : ''}
 
@@ -442,8 +483,12 @@ Ce qui reste, et que ce générateur ne fait pas :
           .join(' et ')} — le README dit pourquoi`
       : "supprimer src/features/home/ — la fonctionnalité d'exemple"
   }
-  5. relire la description : index.html (meta) et src/i18n/messages.ts
-     (app.tagline, about.what)${
+  5. relire le titre de la page et la description : index.html (<title>,
+     og:title, meta) et src/i18n/messages.ts (app.tagline, about.what)${
+       generiques
+         ? `\n     ; ${generiques} : y dire ce que fait l'application`
+         : ''
+     }${
        aTraduire.length
          ? `\n     — l'anglais porte le texte français, marqué « TODO traduire »`
          : ''

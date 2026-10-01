@@ -22,20 +22,27 @@ import * as prettier from 'prettier';
 import configPrettier from '../prettier.config.js';
 import {
   A_TRADUIRE,
+  DESCRIPTION_MAX,
+  DESCRIPTION_MIN,
   PORT_SQUELETTE,
   SQUELETTE,
   SQUELETTE_TITRE,
+  TITRE_MIN,
   activerPages,
   ceQueLAccueilGarde,
   choisirPort,
   choisirRef,
+  controlerTextes,
+  descriptionParDefaut,
   fichiersTexte,
   launchJson,
   lireReponseGh,
+  rangerAppels,
   readme,
   realignerTableaux,
   remplacerPort,
   substituer,
+  titreDePageParDefaut,
   titreDepuisId,
   validerId,
 } from '../bin/scaffold.mjs';
@@ -880,4 +887,259 @@ test('Pages : un échec se dit, et un site relu hors workflow aussi', () => {
     ),
     /build_type vaut « legacy ».*gh api -X PUT repos\/mister-guiiug\/miss-exemple\/pages -f build_type=workflow/
   );
+});
+
+// ── Le titre de la page, et les règles SEO du parc ────────────────────────
+
+const TIRETS_LONGS = new RegExp(`[${String.fromCharCode(0x2013, 0x2014)}]`);
+
+test('les textes par défaut passent les règles SEO du parc, pour tout nom', () => {
+  for (const nom of ['A', 'Miss X', 'Miss Essai Naissance', 'x'.repeat(70)]) {
+    const titrePage = titreDePageParDefaut(nom);
+    const description = descriptionParDefaut(nom);
+    assert.deepEqual(
+      controlerTextes({ titrePage, description }),
+      { refus: [], avertissements: [] },
+      nom
+    );
+    // Aucun ne se présente comme le squelette, ni ne porte de tiret long.
+    const textes = `${titrePage} ${description}`;
+    assert.doesNotMatch(textes, /squelette/);
+    assert.doesNotMatch(textes, TIRETS_LONGS);
+    assert.ok(titrePage.startsWith(nom) && description.startsWith(nom), nom);
+  }
+});
+
+test('ce que pwa-doctor --strict refuserait est refusé avant la naissance', () => {
+  const courts = controlerTextes({
+    titrePage: 'x'.repeat(TITRE_MIN - 1),
+    description: 'x'.repeat(DESCRIPTION_MIN - 1),
+  });
+  assert.equal(courts.refus.length, 2);
+  assert.match(courts.refus[0], /--titre : 49 caractères.*seo-title-length/);
+  assert.match(
+    courts.refus[1],
+    /--description : 69 caractères.*seo-description-length/
+  );
+
+  // Les seuils eux-mêmes passent. Les espaces se comptent resserrées, comme
+  // le contenu servi les montre : soixante colonnes peuvent en faire 39.
+  assert.deepEqual(
+    controlerTextes({
+      titrePage: 'x'.repeat(TITRE_MIN),
+      description: 'x'.repeat(DESCRIPTION_MIN),
+    }),
+    { refus: [], avertissements: [] }
+  );
+  assert.match(
+    controlerTextes({
+      titrePage: 'x  '.repeat(20),
+      description: 'x'.repeat(DESCRIPTION_MIN),
+    }).refus.join(),
+    /--titre : 39 caractères/
+  );
+
+  // Le reste s'annonce sans arrêter : un tiret long dans le titre, une
+  // description que les moteurs tronqueraient.
+  const cadratin = String.fromCharCode(0x2014);
+  const averti = controlerTextes({
+    titrePage: `Miss X ${cadratin} ${'x'.repeat(TITRE_MIN)}`,
+    description: 'x'.repeat(DESCRIPTION_MAX + 1),
+  });
+  assert.deepEqual(averti.refus, []);
+  assert.equal(averti.avertissements.length, 2);
+  assert.match(averti.avertissements[0], /le parc écrit « - »/);
+  assert.match(averti.avertissements[1], /161 caractères/);
+});
+
+/**
+ * L'`index.html` du squelette depuis pwa-starter-kit#72 : le titre allongé
+ * pour Bing, 76 colonnes, et sa copie `og:title` sur plusieurs lignes. Une
+ * balise `<title>` en commentaire n'est pas une place.
+ */
+const INDEX_HTML_TITRE = `<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- <title>${SQUELETTE_TITRE}, en commentaire</title> -->
+    <title>${SQUELETTE_TITRE} - squelette d'application web installable</title>
+    <meta
+      property="og:title"
+      content="${SQUELETTE_TITRE} - squelette d'application web installable"
+    />
+  </head>
+  <body>
+    <div id="app"></div>
+  </body>
+</html>
+`;
+
+/** Engendre depuis le faux squelette avec un nom, et un titre de page s'il est donné. */
+function naitre({ titre, titrePage, preparer = () => {} }) {
+  return squelette(racine => {
+    preparer(racine);
+    const resultat = substituer(racine, {
+      id: 'miss-exemple',
+      titre,
+      description: 'Une application d’exemple.',
+      titrePage,
+    });
+    const lire = rel =>
+      existsSync(join(racine, rel))
+        ? readFileSync(join(racine, rel), 'utf8')
+        : null;
+    return {
+      ...resultat,
+      html: lire('index.html'),
+      spec: lire('e2e/smoke.spec.ts'),
+    };
+  });
+}
+
+/** Le titre comme un navigateur le lit : espaces resserrées, entités décodées. */
+function titreLu(html) {
+  return /<title>([\s\S]*?)<\/title>/
+    .exec(html.replace(/<!--[\s\S]*?-->/g, ''))?.[1]
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/&(amp|lt|gt);/g, (_, e) => ({ amp: '&', lt: '<', gt: '>' })[e]);
+}
+
+test('le titre de la page prend ses places, rangé comme Prettier le range', async () => {
+  const html = { ...configPrettier, parser: 'html' };
+  // Le départ est conforme, comme le vrai squelette que sa CI formate.
+  assert.equal(await prettier.format(INDEX_HTML_TITRE, html), INDEX_HTML_TITRE);
+
+  const x = n => 'x'.repeat(n);
+  const emoji = String.fromCodePoint(0x1f389);
+  const epreuves = [
+    // Le seuil : 61 caractères tiennent derrière quatre espaces, 62 non.
+    x(61),
+    x(62),
+    titreDePageParDefaut('Miss X'),
+    'Miss Devises - convertisseur euro avec billets et pièces',
+    // Replié mot à mot, sur deux lignes ou davantage.
+    'Mister Une Application Au Nom Vraiment Long - suivi des tâches de la maison',
+    `Mister Une Application Au Nom Vraiment Long - ${'mot '.repeat(40).trim()}`,
+    // Ce qui s'échappe compte pour ce qui s'écrit : `&amp;` vaut cinq colonnes.
+    'Mister & Miss Koh - suivi de Koh-Lanta sans spoiler, saison après saison',
+    'Les balises <title> et leurs copies, pour une application de la famille',
+    `${x(55)} ${emoji}${emoji}`,
+    // Un mot plus large que la ligne reste entier.
+    `Miss X - ${x(90)} fin`,
+  ];
+  for (const titrePage of epreuves) {
+    const r = naitre({
+      titre: 'Miss X',
+      titrePage,
+      preparer: racine => ecrire(racine, 'index.html', INDEX_HTML_TITRE),
+    });
+    assert.equal(r.html, await prettier.format(r.html, html), titrePage);
+    assert.equal(titreLu(r.html), titrePage);
+    assert.equal(meta(r.html, 'og:title'), titrePage);
+    assert.match(r.html, /<!-- <title>Miss X, en commentaire<\/title> -->/);
+    assert.deepEqual(r.titres, { restes: [], manquantes: [] });
+  }
+});
+
+test('le titre du squelette ne survit nulle part, et une place absente se dit', () => {
+  const titrePage = titreDePageParDefaut('Miss X');
+  // Le squelette recopie un jour son titre ailleurs : la naissance le voit.
+  const recopie = naitre({
+    titre: 'Miss X',
+    titrePage,
+    preparer: racine => {
+      ecrire(racine, 'index.html', INDEX_HTML_TITRE);
+      ecrire(
+        racine,
+        'public/llms.txt',
+        `# ${SQUELETTE_TITRE} - squelette d'application web installable\n`
+      );
+    },
+  });
+  assert.deepEqual(recopie.titres.restes, ['public/llms.txt']);
+
+  // `v1.2.0` : le titre n'était que le nom. Il est remplacé, et le nom, qui
+  // est partout ailleurs, n'est pas pris pour un reste.
+  const ancien = naitre({ titre: 'Miss X', titrePage });
+  assert.deepEqual(ancien.titres, { restes: [], manquantes: [] });
+  assert.equal(titreLu(ancien.html), titrePage);
+  assert.equal(meta(ancien.html, 'og:title'), titrePage);
+
+  // Ni `<title>` ni `og:title` : rien n'est inventé, et cela se dit.
+  const sans = naitre({
+    titre: 'Miss X',
+    titrePage,
+    preparer: racine =>
+      ecrire(
+        racine,
+        'index.html',
+        '<!doctype html>\n<html><head></head></html>\n'
+      ),
+  });
+  assert.deepEqual(sans.titres.manquantes, [
+    'index.html : <title>',
+    'index.html : <meta og:title>',
+  ]);
+
+  // Sans titre de page demandé, `substituer` fait ce qu'il faisait.
+  const inchange = naitre({ titre: 'Miss X' });
+  assert.match(inchange.html, /<title>Miss X<\/title>/);
+  assert.deepEqual(inchange.titres, { restes: [], manquantes: [] });
+});
+
+/**
+ * Un test de bout en bout à l'image de `e2e/smoke.spec.ts` du squelette, rangé
+ * par Prettier avec son nom : l'appel ouvert sur trois lignes, et une requête
+ * qui tient sur une.
+ */
+const SMOKE_SPEC = `import { expect, test } from '@playwright/test';
+
+test.describe('@critical le cadre', () => {
+  test("l'accueil s'ouvre et porte le nom de l'app", async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+      '${SQUELETTE_TITRE}'
+    );
+    const nom = page.getByText('${SQUELETTE_TITRE}');
+    await expect(page.getByRole('heading', { level: 2 })).toHaveText('Notes');
+  });
+});
+`;
+
+test('un appel qui porte le nom tient sur sa ligne, ou non, comme Prettier le décide', async () => {
+  const ts = { ...configPrettier, parser: 'typescript' };
+  // Le départ est conforme, comme le vrai squelette que sa CI formate.
+  assert.equal(await prettier.format(SMOKE_SPEC, ts), SMOKE_SPEC);
+
+  // « Miss X » referme l'appel, une centaine de caractères ouvre la requête.
+  for (const titre of [
+    'X',
+    'Miss X',
+    'Miss Xy',
+    'Miss Essai Naissance',
+    'Mister Une Application Au Nom Vraiment Long',
+    'x'.repeat(60),
+  ]) {
+    const r = naitre({
+      titre,
+      preparer: racine => ecrire(racine, 'e2e/smoke.spec.ts', SMOKE_SPEC),
+    });
+    assert.equal(r.spec, await prettier.format(r.spec, ts), titre);
+    assert.equal(r.spec.split(`'${titre}'`).length - 1, 2, titre);
+  }
+});
+
+test('rangerAppels ne touche que les appels à une seule chaîne qui porte le nom', () => {
+  for (const intact of [
+    // Deux arguments : la règle n'est plus la même, rien n'est deviné.
+    "    foo('Miss X', 1);",
+    "    foo(\n      'Miss X',\n      'autre'\n    );",
+    // Une chaîne qui ne porte pas le nom reste telle que le squelette l'a.
+    "    await expect(page.getByRole('heading', { level: 1 })).toHaveText(\n      'Notes'\n    );",
+    // Un nom dans un commentaire ou une propriété n'est pas un appel.
+    "    // voir toHaveText('Miss X')\n    name: 'Miss X',",
+  ]) {
+    assert.equal(rangerAppels(intact, 'Miss X'), intact);
+  }
 });

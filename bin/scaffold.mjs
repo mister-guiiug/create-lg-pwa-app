@@ -215,6 +215,85 @@ export function activerPages(api, depot) {
   }
 }
 
+// ── Les règles SEO/GEO/AEO du parc ─────────────────────────────────────────
+//
+// `pwa-doctor --strict` termine la construction de l'application engendrée, et
+// une dette suffit à la refuser. Les seuils sont les siens (socle 6.21) : un
+// titre de moins de 50 caractères (`seo-title-length`, le « Title too short »
+// de Bing), une description de moins de 70 (`seo-description-length`).
+
+/** Le titre de la page : 50 caractères au moins. */
+export const TITRE_MIN = 50;
+
+/** La description : 70 caractères au moins ; au-delà de 160, tronquée. */
+export const DESCRIPTION_MIN = 70;
+export const DESCRIPTION_MAX = 160;
+
+/** Ce que les règles comptent : des caractères, espaces resserrées. */
+const longueur = texte => [...texte.replace(/\s+/g, ' ').trim()].length;
+
+/** Le demi-cadratin et le cadratin, U+2013 et U+2014. */
+const TIRETS_LONGS = new RegExp(`[${String.fromCharCode(0x2013, 0x2014)}]`);
+
+/**
+ * Le titre de la page quand `--titre` manque. Vrai pour toute application de
+ * la famille, et assez long pour la règle de Bing, même pour un nom d'une
+ * lettre ; mais générique, donc à réécrire, et le message final le dit. Le
+ * squelette, lui, se présentait comme « squelette d'application web
+ * installable » : faux pour l'application, et trop court pour un nom de moins
+ * de 8 caractères.
+ */
+export function titreDePageParDefaut(nom) {
+  return `${nom} - application web installable de la famille mister-guiiug`;
+}
+
+/**
+ * La description quand `--description` manque : 70 caractères au moins, même
+ * pour un nom d'une lettre. L'ancienne en faisait une quarantaine, tiret
+ * cadratin compris : depuis le socle 6.21, toute naissance sans
+ * `--description` échouait à sa construction.
+ */
+export function descriptionParDefaut(nom) {
+  return `${nom}, application web installable de la famille mister-guiiug, qui s'ouvre aussi hors ligne.`;
+}
+
+/**
+ * Le titre de la page et la description, confrontés aux règles du parc AVANT
+ * la naissance. Ce que `pwa-doctor --strict` refuserait est refusé ici : à la
+ * construction, l'échec venait après le téléchargement et l'installation, et
+ * laissait un dossier qui bloque la tentative suivante. Le reste s'annonce.
+ *
+ * @returns {{ refus: string[], avertissements: string[] }}
+ */
+export function controlerTextes({ titrePage, description }) {
+  const refus = [];
+  const avertissements = [];
+  const titre = longueur(titrePage);
+  if (titre < TITRE_MIN) {
+    refus.push(
+      `--titre : ${titre} caractères, ${TITRE_MIN} au moins (seo-title-length : Bing le juge trop court, et pwa-doctor --strict refuse la construction)`
+    );
+  }
+  // Le tiret simple est la règle du parc depuis miss-dice#96, et l'audit
+  // SEO du 28/09/2026 a relevé le seul titre qui y dérogeait.
+  if (TIRETS_LONGS.test(titrePage)) {
+    avertissements.push(
+      '--titre : un tiret cadratin ou demi-cadratin ; le parc écrit « - »'
+    );
+  }
+  const phrase = longueur(description);
+  if (phrase < DESCRIPTION_MIN) {
+    refus.push(
+      `--description : ${phrase} caractères, ${DESCRIPTION_MIN} au moins (seo-description-length : pwa-doctor --strict refuse la construction)`
+    );
+  } else if (phrase > DESCRIPTION_MAX) {
+    avertissements.push(
+      `--description : ${phrase} caractères ; au-delà de ${DESCRIPTION_MAX}, les moteurs la tronquent (viser 120 à 155)`
+    );
+  }
+  return { refus, avertissements };
+}
+
 /**
  * Le nom affiché, déduit de l'identifiant : `miss-exemple` → `Miss Exemple`.
  * Déductible ne veut pas dire imposé — l'option `--nom` le remplace.
@@ -258,23 +337,35 @@ export function fichiersTexte(racine) {
  * occupe ces places, retient ce qu'il a retiré, puis vérifie que rien de ce
  * qu'il a retiré ne subsiste ailleurs.
  *
+ * LE TITRE DE LA PAGE AUSSI EST UNE PLACE : `<title>` et ses copies `og:title`
+ * et `twitter:title`, dans `index.html`. Le socle le sert en h1 aux robots sans
+ * JavaScript et le reprend dans ses données structurées ; le squelette y écrit
+ * « squelette d'application web installable », qu'aucune application ne doit
+ * garder. Il est traité comme la description : réécrit, puis gardé.
+ *
  * @returns {{
  *   fichiers: string[],
  *   restes: string[],
  *   descriptions: { restes: string[], manquantes: string[], aTraduire: string[] },
+ *   titres: { restes: string[], manquantes: string[] },
  * }} les fichiers réécrits ; ceux où le nom du squelette subsiste — qui doivent
  *   être vides ; et pour la description : les fichiers où un texte du squelette
  *   subsiste (vides eux aussi), les places attendues et introuvables, les
- *   phrases recopiées du français dans une autre langue.
+ *   phrases recopiées du français dans une autre langue ; pour le titre de la
+ *   page, les mêmes restes et places introuvables.
  */
-export function substituer(racine, { id, titre, description }) {
+export function substituer(racine, { id, titre, description, titrePage }) {
   const fichiers = [];
   const anciennes = [];
   const manquantes = [];
   const aTraduire = [];
+  const anciensTitres = [];
+  const titresManquants = [];
   // Une meta description tient sur une ligne, une chaîne de dictionnaire aussi.
   const phrase = description?.replace(/\s+/g, ' ').trim();
+  const titreDePage = titrePage?.replace(/\s+/g, ' ').trim();
   const vus = new Set();
+  let titreVu = false;
   for (const rel of fichiersTexte(racine)) {
     const abs = join(racine, rel);
     const avant = readFileSync(abs, 'utf8');
@@ -290,6 +381,11 @@ export function substituer(racine, { id, titre, description }) {
         tableau => tableau.includes(id) || tableau.includes(titre)
       );
     }
+    // Même cause dans le code : un appel dont la seule chaîne est le nom tient
+    // ou non sur sa ligne selon la longueur du nom.
+    if (CODE.test(rel) && apres !== avant && apres.includes(titre)) {
+      apres = rangerAppels(apres, titre);
+    }
     const reecrire =
       rel === 'package.json' ? reecrirePaquet : phrase && DESCRIPTIONS[rel];
     if (reecrire) {
@@ -299,6 +395,13 @@ export function substituer(racine, { id, titre, description }) {
       anciennes.push(...r.anciennes);
       manquantes.push(...r.manquantes.map(m => `${rel} : ${m}`));
       aTraduire.push(...(r.aTraduire ?? []).map(m => `${rel} : ${m}`));
+    }
+    if (titreDePage && rel === 'index.html') {
+      titreVu = true;
+      const r = reecrireTitre(apres, titreDePage);
+      apres = r.texte;
+      anciensTitres.push(...r.anciennes);
+      titresManquants.push(...r.manquantes.map(m => `${rel} : ${m}`));
     }
     if (apres !== avant) {
       writeFileSync(abs, apres);
@@ -310,29 +413,41 @@ export function substituer(racine, { id, titre, description }) {
       if (!vus.has(rel)) manquantes.push(`${rel} : fichier absent`);
     }
   }
+  if (titreDePage && !titreVu) {
+    titresManquants.push('index.html : fichier absent');
+  }
 
   // LE README EST ÉCARTÉ du second contrôle : `readme()` le remplace en entier
   // juste après, et une phrase du squelette qu'il citerait disparaîtrait avec.
   // Un ancien texte que la nouvelle description CONTIENT n'est pas cherché :
-  // on le trouverait partout où elle vient d'être écrite.
+  // on le trouverait partout où elle vient d'être écrite. Un ancien titre qui
+  // n'était que le nom affiché non plus (`v1.2.0`) : le nom est partout.
   const retirees = anciennes.filter(
     a => a && !phrase?.includes(a) && !description?.includes(a)
   );
+  const titresRetires = anciensTitres.filter(
+    a => a && a !== titre && !titreDePage?.includes(a) && !phrase?.includes(a)
+  );
   const restes = [];
   const restesDescription = [];
+  const restesTitre = [];
   for (const rel of fichiersTexte(racine)) {
     const texte = readFileSync(join(racine, rel), 'utf8');
     if (texte.includes(SQUELETTE)) restes.push(rel);
-    if (rel !== 'README.md' && retirees.some(a => texte.includes(a))) {
-      restesDescription.push(rel);
-    }
+    if (rel === 'README.md') continue;
+    if (retirees.some(a => texte.includes(a))) restesDescription.push(rel);
+    if (titresRetires.some(a => texte.includes(a))) restesTitre.push(rel);
   }
   return {
     fichiers,
     restes,
     descriptions: { restes: restesDescription, manquantes, aTraduire },
+    titres: { restes: restesTitre, manquantes: titresManquants },
   };
 }
+
+/** Les fichiers de code, où un appel peut porter le nom affiché. */
+const CODE = /\.[cm]?[jt]sx?$/;
 
 /**
  * Le `package.json` de la nouvelle application : version remise à zéro, et la
@@ -425,6 +540,49 @@ function proprieteTs(indent, cle, texte, fin) {
 }
 
 /**
+ * Un appel dont la seule chaîne porte le nom affiché, `toHaveText('Miss X')` :
+ * sur une ligne s'il y tient, sinon la chaîne seule sur la sienne. Relevé sur
+ * Prettier pour quatre formes d'appel, des tests de bout en bout aux requêtes
+ * de Testing Library. Le nom du squelette ouvrait ainsi l'appel de
+ * `e2e/smoke.spec.ts` sur trois lignes ; avec « Miss X », il tient sur une, et
+ * Prettier le referme.
+ */
+export function rangerAppels(source, nom) {
+  const lignes = source.split('\n');
+  const sortie = [];
+  for (let i = 0; i < lignes.length; i++) {
+    const ouvert = /^(\s*)(\S.*\()$/.exec(lignes[i]);
+    const seule = CHAINE_SEULE.exec(lignes[i + 1] ?? '');
+    const ferme = /^\s*(\).*)$/.exec(lignes[i + 2] ?? '');
+    if (ouvert && seule?.[1].includes(nom) && ferme) {
+      const uneLigne = `${ouvert[1]}${ouvert[2]}${seule[1]}${ferme[1]}`;
+      if (largeur(uneLigne) <= LARGEUR) sortie.push(uneLigne);
+      else sortie.push(...lignes.slice(i, i + 3));
+      i += 2;
+      continue;
+    }
+    const appel = APPEL_A_CHAINE.exec(lignes[i]);
+    if (appel?.[3].includes(nom) && largeur(lignes[i]) > LARGEUR) {
+      const [, indent, debut, chaine, , fin] = appel;
+      sortie.push(
+        `${indent}${debut}`,
+        `${indent}${' '.repeat(TABULATION)}${chaine}`,
+        `${indent}${fin}`
+      );
+      continue;
+    }
+    sortie.push(lignes[i]);
+  }
+  return sortie.join('\n');
+}
+
+/** Une ligne qui n'est qu'une chaîne, entre apostrophes ou guillemets. */
+const CHAINE_SEULE = /^\s*((['"])(?:\\.|(?!\2)[^\\])*\2)$/;
+
+/** Un appel dont la chaîne est le seul argument : `…(`, `'…'`, `)…`. */
+const APPEL_A_CHAINE = /^(\s*)(\S.*\()((['"])(?:\\.|(?!\4)[^\\])*\4)(\).*)$/;
+
+/**
  * Une valeur d'attribut HTML : guillemets doubles, simples si le texte contient
  * plus de guillemets que d'apostrophes — Prettier fait ce choix lui-même et
  * réécrit `&quot;` / `&apos;` en conséquence ; `&amp;`, `&lt;`, `&gt;` restent.
@@ -437,6 +595,33 @@ function attributHtml(texte) {
   return compter(texte, '"') > compter(texte, "'")
     ? `'${echappe.replaceAll("'", '&apos;')}'`
     : `"${echappe.replaceAll('"', '&quot;')}"`;
+}
+
+/**
+ * La balise `<title>` : sur une ligne si elle tient, sinon le texte seul entre
+ * les deux balises, replié mot à mot comme Prettier remplit un paragraphe.
+ * Relevé sur Prettier : derrière quatre espaces, un texte de 61 caractères
+ * tient sur la ligne, un de 62 non ; replié, il passe à la ligne dès qu'un mot
+ * dépasserait la 80e colonne.
+ */
+function baliseTitre(indent, texte) {
+  const echappe = texte
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+  const uneLigne = `${indent}<title>${echappe}</title>`;
+  if (largeur(uneLigne) <= LARGEUR) return uneLigne;
+  const suite = `${indent}${' '.repeat(TABULATION)}`;
+  const lignes = [];
+  for (const mot of echappe.split(' ')) {
+    const derniere = lignes.at(-1);
+    if (derniere !== undefined && largeur(`${derniere} ${mot}`) <= LARGEUR) {
+      lignes[lignes.length - 1] = `${derniere} ${mot}`;
+    } else {
+      lignes.push(suite + mot);
+    }
+  }
+  return [`${indent}<title>`, ...lignes, `${indent}</title>`].join('\n');
 }
 
 /** Une balise sur une ligne si elle tient, sinon un attribut par ligne. */
@@ -588,12 +773,21 @@ const META_DESCRIPTION = new Set([
  */
 const META_ATTENDUES = ['description', 'og:description'];
 
+/** Les copies du titre de la page, et celle dont l'absence se signale. */
+const META_TITRE = new Set(['og:title', 'twitter:title']);
+const META_TITRE_ATTENDUES = ['og:title'];
+
 /**
- * Les balises meta d'`index.html`. Une balise en commentaire n'est pas une
- * balise : l'alternative consomme les commentaires d'abord et les rend tels
- * quels.
+ * Les balises meta d'`index.html` : par défaut celles de la description, ou
+ * les clés données. Une balise en commentaire n'est pas une balise :
+ * l'alternative consomme les commentaires d'abord et les rend tels quels.
  */
-function reecrireMeta(html, phrase) {
+function reecrireMeta(
+  html,
+  phrase,
+  cles = META_DESCRIPTION,
+  attendues = META_ATTENDUES
+) {
   const anciennes = [];
   const trouvees = new Set();
   const texte = html.replace(
@@ -613,7 +807,7 @@ function reecrireMeta(html, phrase) {
         .find(a => a.nom === 'name' || a.nom === 'property')
         ?.valeur?.toLowerCase();
       const contenu = attributs.find(a => a.nom === 'content');
-      if (!META_DESCRIPTION.has(cle) || !contenu) return balise;
+      if (!cles.has(cle) || !contenu) return balise;
       trouvees.add(cle);
       anciennes.push(decoderHtml(contenu.valeur ?? ''));
       contenu.brut = `content=${attributHtml(phrase)}`;
@@ -626,9 +820,37 @@ function reecrireMeta(html, phrase) {
   return {
     texte,
     anciennes,
-    manquantes: META_ATTENDUES.filter(c => !trouvees.has(c)).map(
-      c => `<meta ${c}>`
-    ),
+    manquantes: attendues.filter(c => !trouvees.has(c)).map(c => `<meta ${c}>`),
+  };
+}
+
+/**
+ * Le titre de la page, à ses places d'`index.html` : la balise `<title>`, puis
+ * ses copies `og:title` et `twitter:title`. Une balise `<title>` en
+ * commentaire reste telle quelle, comme une meta.
+ */
+function reecrireTitre(html, titrePage) {
+  const anciennes = [];
+  let trouve = false;
+  const avecTitre = html.replace(
+    /<!--[\s\S]*?-->|^([ \t]*)<title>([\s\S]*?)<\/title>/gim,
+    (balise, indent, interieur) => {
+      if (indent === undefined) return balise;
+      trouve = true;
+      anciennes.push(decoderHtml(interieur.replace(/\s+/g, ' ').trim()));
+      return baliseTitre(indent, titrePage);
+    }
+  );
+  const copies = reecrireMeta(
+    avecTitre,
+    titrePage,
+    META_TITRE,
+    META_TITRE_ATTENDUES
+  );
+  return {
+    texte: copies.texte,
+    anciennes: [...anciennes, ...copies.anciennes],
+    manquantes: [...(trouve ? [] : ['<title>']), ...copies.manquantes],
   };
 }
 
@@ -795,9 +1017,10 @@ ${exemple}
 5. si l'application a un backend : poser \`VITE_SUPABASE_URL\` et
    \`VITE_SUPABASE_ANON_KEY\` en **variables** du dépôt, et appliquer
    \`supabase/\` — sinon supprimer ce dossier et les deux workflows Supabase ;
-6. relire la description — la meta d'\`index.html\`, \`app.tagline\` et
-   \`about.what\` de \`src/i18n/messages.ts\` — et traduire l'anglais, marqué
-   \`TODO traduire\`.
+6. relire le titre de la page (\`<title>\` et \`og:title\` d'\`index.html\`, que
+   le socle sert en h1 aux robots) et la description — la meta
+   d'\`index.html\`, \`app.tagline\` et \`about.what\` de \`src/i18n/messages.ts\` —
+   et traduire l'anglais, marqué \`TODO traduire\`.
 
 ## Les décisions
 

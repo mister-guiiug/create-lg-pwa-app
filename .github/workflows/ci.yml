@@ -43,7 +43,14 @@ jobs:
     env:
       # Deux apostrophes droites : la chaîne passe entre guillemets doubles dans
       # le dictionnaire, ce que la vérification de Prettier ci-dessous éprouve.
-      DESCRIPTION: "L'application d'essai de la CI, engendrée à chaque poussée."
+      # 87 caractères : le générateur refuse une description de moins de 70.
+      DESCRIPTION: "L'application d'essai de la CI, engendrée à chaque poussée pour éprouver le générateur."
+      # 59 caractères : au-dessus des 50 de la règle, et assez court pour tenir
+      # sur la ligne de `<title>`, ce que le compte ci-dessous suppose.
+      TITRE: "Miss Essai Ci - l'application d'essai que la CI fait naître"
+      # Un nom long et un titre qui se replie, pour la naissance depuis `main`.
+      NOM_LONG: 'Mister Une Application Au Nom Vraiment Long'
+      TITRE_LONG: 'Mister Une Application Au Nom Vraiment Long - le titre qui se replie sur deux lignes'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -54,7 +61,7 @@ jobs:
           node-version: '22'
 
       - name: Engendrer
-        run: node bin/create-lg-pwa-app.mjs miss-essai-ci --no-install --dir /tmp/engendree --description "$DESCRIPTION"
+        run: node bin/create-lg-pwa-app.mjs miss-essai-ci --no-install --dir /tmp/engendree --titre "$TITRE" --description "$DESCRIPTION"
 
       # Le README cite le squelette comme ORIGINE, en lien : c'est voulu, et
       # c'est la seule occurrence tolérée.
@@ -74,9 +81,10 @@ jobs:
       # Le générateur ÉCHOUE si une phrase du squelette subsiste, mais il ne
       # fait qu'AVERTIR quand une place manque : le squelette a pu la retirer
       # à dessein. Ici, les comptes sont ceux du squelette d'aujourd'hui — deux
-      # balises meta, deux phrases dans deux langues — et c'est ce job qui
-      # rougit le jour où l'une d'elles change de place.
-      - name: La description posée à chacune de ses places
+      # balises meta, deux phrases dans deux langues, le titre et sa copie
+      # og:title — et c'est ce job qui rougit le jour où l'une d'elles change
+      # de place.
+      - name: La description et le titre posés à chacune de leurs places
         working-directory: /tmp/engendree
         run: |
           attendu() {
@@ -89,7 +97,8 @@ jobs:
           attendu index.html "$DESCRIPTION" 2
           attendu src/i18n/messages.ts "$DESCRIPTION" 4
           attendu src/i18n/messages.ts 'TODO traduire' 2
-          echo "✅ meta description, og:description, app.tagline et about.what"
+          attendu index.html "$TITRE" 2
+          echo "✅ meta description, og:description, app.tagline, about.what, <title> et og:title"
 
       # LA PREUVE QUI MANQUAIT : l'application engendrée — pas le squelette —
       # s'installe, se construit, passe le budget de poids et `pwa-doctor
@@ -128,18 +137,40 @@ jobs:
       # LA POINTE DE `main` AUSSI. Le générateur tire la dernière ÉTIQUETTE du
       # squelette : ce qui a été ajouté depuis n'est éprouvé nulle part avant la
       # prochaine, et c'est ainsi que l'ADR 0012 aurait fait naître des apps
-      # rouges sans que rien ne l'annonce. Engendrée sans installation, cette
-      # seconde app passe par le Prettier et la configuration de la première.
-      - name: Depuis la pointe de main, l'arbre engendré passe Prettier
+      # rouges sans que rien ne l'annonce. Engendrées sans installation, ces
+      # apps passent par le Prettier et la configuration de la première.
+      #
+      # DEUX NAISSANCES, PAS UNE. La longueur du nom change la mise en page :
+      # un `<title>` qui se replie au-delà de 61 caractères, un appel de
+      # `e2e/smoke.spec.ts` qui se referme sous sept. Un nom court avec les
+      # textes par défaut, un nom long avec un titre qui se replie.
+      - name: Depuis la pointe de main, les arbres engendrés passent Prettier
         run: |
           node bin/create-lg-pwa-app.mjs miss-essai-ci --no-install --from main \
-            --dir /tmp/depuis-main --description "$DESCRIPTION"
-          cd /tmp/depuis-main
-          /tmp/engendree/node_modules/.bin/prettier \
-            --config /tmp/engendree/prettier.config.js --check .
+            --nom 'Miss X' --dir /tmp/depuis-main
+          node bin/create-lg-pwa-app.mjs miss-essai-ci --no-install --from main \
+            --nom "$NOM_LONG" --titre "$TITRE_LONG" --description "$DESCRIPTION" \
+            --dir /tmp/depuis-main-long
+          for arbre in /tmp/depuis-main /tmp/depuis-main-long; do
+            (cd "$arbre" && /tmp/engendree/node_modules/.bin/prettier \
+              --config /tmp/engendree/prettier.config.js --check .)
+          done
           # Depuis pwa-starter-kit#67, l'accueil porte l'accroche : le README
           # engendré doit dire de la garder, pas de supprimer l'écran.
-          if ! grep -q "l'accroche \`app.tagline\`" README.md; then
+          if ! grep -q "l'accroche \`app.tagline\`" /tmp/depuis-main/README.md; then
             echo "::error::README.md : l'accroche de l'accueil n'est pas dite à garder"
             exit 1
           fi
+
+      # LES RÈGLES SEO DU SOCLE, PAR SA PROPRE CONSTRUCTION. Depuis le socle
+      # 6.21, `pwa-doctor --strict` refuse un titre de moins de 50 caractères
+      # et une description de moins de 70 ; l'étiquette du squelette, en socle
+      # 4, ne les connaît pas. C'est donc la pointe, avec un nom de six
+      # caractères et les textes par défaut, qui prouve qu'ils passent.
+      - name: Depuis la pointe de main, les textes par défaut passent pwa-doctor --strict
+        working-directory: /tmp/depuis-main
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
