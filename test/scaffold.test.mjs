@@ -68,7 +68,31 @@ const DIT_SQUELETTE = {
   taglineEn: 'The family skeleton, ready to clone.',
   whatEn:
     'This repository is the starting point for the family applications. It has no domain: it has the frame.',
+  manifeste:
+    'Squelette d’application web installable : React, Vite, TypeScript, hors ligne, i18n FR/EN et Supabase en option.',
 };
+
+/**
+ * `vite.config.ts` à l'image du vrai sur ce qui compte : le manifeste passé à
+ * `pwaBaseOptions({ … })` dans `VitePWA(…)`, sa description repliée sous sa clé
+ * (pwa-starter-kit#81). Formaté comme Prettier le rend.
+ */
+const VITE_CONFIG_TS = `const APP_ID = '${SQUELETTE}';
+
+export default {
+  plugins: [
+    VitePWA(
+      pwaBaseOptions({
+        id: APP_ID,
+        name: '${SQUELETTE_TITRE}',
+        shortName: '${SQUELETTE_NOM_COURT}',
+        description:
+          '${DIT_SQUELETTE.manifeste}',
+      })
+    ),
+  ],
+};
+`;
 
 /** Formaté comme Prettier le rend — le premier test le vérifie. */
 const INDEX_HTML = `<!doctype html>
@@ -154,13 +178,7 @@ function squelette(fn) {
       2
     ),
     'src/app/links.ts': `export const APP_ID = '${SQUELETTE}';`,
-    'vite.config.ts': `const APP_ID = '${SQUELETTE}';
-const pwa = pwaBaseOptions({
-  id: APP_ID,
-  name: '${SQUELETTE_TITRE}',
-  shortName: '${SQUELETTE_NOM_COURT}',
-});
-`,
+    'vite.config.ts': VITE_CONFIG_TS,
     'index.html': INDEX_HTML,
     'src/i18n/messages.ts': MESSAGES_TS,
     'docs/adr/0001-routeur.md': `# Décision\n\nValable pour ${SQUELETTE_TITRE}.\n`,
@@ -657,8 +675,18 @@ function engendrer(description, preparer = () => {}) {
       ...resultat,
       html: lire('index.html'),
       ts: lire('src/i18n/messages.ts'),
+      vite: lire('vite.config.ts'),
     };
   });
+}
+
+/** La description que `vite.config.ts` passe au manifeste, relue. */
+function manifeste(vite) {
+  const m = new RegExp(
+    String.raw`^ {8}description:\s*(['"](?:\\.|[^\\\n])*?['"]),$`,
+    'm'
+  ).exec(vite);
+  return m ? runInNewContext(m[1]) : undefined;
 }
 
 /** La valeur d'une balise meta, décodée comme un navigateur la lit. */
@@ -691,12 +719,18 @@ test('la description prend la place de celle du squelette, partout où il se dé
   // …et la première ligne de l'accueil, puis « À propos », dans les deux langues.
   assert.deepEqual(phrases(r.ts, 'tagline'), [d, d]);
   assert.deepEqual(phrases(r.ts, 'what'), [d, d]);
+  // …et le manifeste, que Chrome montre dans sa fiche d'installation.
+  assert.equal(manifeste(r.vite), d);
 
   // Le garde n'a rien à dire : rien de retiré ne subsiste, aucune place ne manque.
   assert.deepEqual(r.descriptions.restes, []);
   assert.deepEqual(r.descriptions.manquantes, []);
   for (const texte of Object.values(DIT_SQUELETTE)) {
-    assert.equal(r.html.includes(texte) || r.ts.includes(texte), false, texte);
+    assert.equal(
+      [r.html, r.ts, r.vite].some(f => f.includes(texte)),
+      false,
+      texte
+    );
   }
 
   // Ce qui n'est pas une place n'est pas touché.
@@ -732,6 +766,7 @@ test('la mise en page est celle de Prettier, quelle que soit la phrase', async (
   // suit mesure la réécriture, pas le décor.
   assert.equal(await prettier.format(INDEX_HTML, html), INDEX_HTML);
   assert.equal(await prettier.format(MESSAGES_TS, ts), MESSAGES_TS);
+  assert.equal(await prettier.format(VITE_CONFIG_TS, ts), VITE_CONFIG_TS);
 
   const x = n => 'x'.repeat(n);
   const emoji = String.fromCodePoint(0x1f389);
@@ -770,11 +805,13 @@ test('la mise en page est celle de Prettier, quelle que soit la phrase', async (
     const r = engendrer(d);
     assert.equal(r.html, await prettier.format(r.html, html), `« ${d} »`);
     assert.equal(r.ts, await prettier.format(r.ts, ts), `« ${d} »`);
+    assert.equal(r.vite, await prettier.format(r.vite, ts), `« ${d} »`);
     // Et le texte relu est celui demandé : l'échappement ne l'a pas abîmé.
     assert.equal(meta(r.html, 'description'), d);
     assert.equal(meta(r.html, 'og:description'), d);
     assert.deepEqual(phrases(r.ts, 'tagline'), [d, d]);
     assert.deepEqual(phrases(r.ts, 'what'), [d, d]);
+    assert.equal(manifeste(r.vite), d, `« ${d} »`);
   }
 });
 
@@ -795,10 +832,13 @@ test('le garde : une phrase du squelette qui subsiste ailleurs est signalée', (
       'src/features/about/Intro.tsx',
       `export const intro = ${JSON.stringify(DIT_SQUELETTE.paquet)};\n`
     );
+    // La phrase du manifeste aussi, recopiée dans une page de contenu.
+    ecrire(racine, 'content/pages/accueil.md', `${DIT_SQUELETTE.manifeste}\n`);
     // Le README, lui, est remplacé en entier par `readme()` juste après.
     ecrire(racine, 'README.md', `${DIT_SQUELETTE.whatFr}\n`);
   });
   assert.deepEqual(r.descriptions.restes.sort(), [
+    'content/pages/accueil.md',
     'public/llms.txt',
     'src/features/about/Intro.tsx',
   ]);
@@ -840,6 +880,29 @@ test('une place introuvable est signalée, et rien n’est inventé', () => {
   assert.deepEqual(sans.descriptions.manquantes, [
     'src/i18n/messages.ts : fichier absent',
   ]);
+});
+
+test('la description du manifeste est une place facultative : v1.2.0 ne l’a pas', () => {
+  // L'étiquette par défaut du squelette ne passe pas de description à
+  // `pwaBaseOptions` : son absence n'est ni un défaut ni un avertissement.
+  const sansDescription = VITE_CONFIG_TS.replace(
+    /^ {8}description:\n.*\n/m,
+    ''
+  );
+  assert.notEqual(sansDescription, VITE_CONFIG_TS);
+  const r = engendrer('Une application d’exemple.', racine =>
+    ecrire(racine, 'vite.config.ts', sansDescription)
+  );
+  assert.deepEqual(r.descriptions.manquantes, []);
+  assert.equal(manifeste(r.vite), undefined);
+  // Rien n'est inventé : le fichier n'a reçu que l'identité.
+  assert.equal(
+    r.vite,
+    sansDescription
+      .replaceAll(SQUELETTE, 'miss-exemple')
+      .replaceAll(SQUELETTE_TITRE, 'Miss Exemple')
+      .replaceAll(SQUELETTE_NOM_COURT, 'Miss Exemple')
+  );
 });
 
 // ── Les tableaux Markdown ─────────────────────────────────────────────────

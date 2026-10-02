@@ -557,6 +557,7 @@ function reecrirePaquet(json, description) {
 const DESCRIPTIONS = {
   'index.html': reecrireMeta,
   'src/i18n/messages.ts': reecrireDictionnaires,
+  'vite.config.ts': reecrireManifeste,
 };
 
 // ── Écrire comme Prettier ──────────────────────────────────────────────────
@@ -947,6 +948,45 @@ function reecrireTitre(html, titrePage) {
     anciennes: [...anciennes, ...copies.anciennes],
     manquantes: [...(trouve ? [] : ['<title>']), ...copies.manquantes],
   };
+}
+
+/**
+ * La description du MANIFESTE, que `vite.config.ts` passe à
+ * `pwaBaseOptions({ … })` : celle que Chrome montre dans sa fiche
+ * d'installation. Le squelette la porte depuis pwa-starter-kit#81
+ * (29/09/2026) ; tant que le générateur ne la connaissait pas, chaque
+ * application née de `main` se présentait comme un « Squelette d’application
+ * web installable », et le garde ne le voyait pas, la phrase n'étant écrite
+ * nulle part ailleurs.
+ *
+ * L'INDENTATION EST UNE STRUCTURE FIABLE ICI, comme dans les dictionnaires :
+ * `pwaBaseOptions({` ouvre une ligne et `})` la ferme à la même colonne, ses
+ * clés deux colonnes plus loin. La propriété est réécrite comme Prettier la
+ * range, sur sa ligne ou repliée sous sa clé.
+ *
+ * LA PLACE EST FACULTATIVE : l'étiquette `v1.2.0`, celle que le générateur tire
+ * par défaut, ne passe pas de description. Son absence ne se signale donc pas.
+ */
+function reecrireManifeste(source, phrase) {
+  const anciennes = [];
+  const texte = source.replace(
+    /^([ \t]*)pwaBaseOptions\(\{\n([\s\S]*?)^\1\}\)/m,
+    (_, indent, corps) => {
+      const cle = indent + ' '.repeat(TABULATION);
+      const nouveau = corps.replace(
+        new RegExp(
+          String.raw`^${cle}description:\s*(['"])((?:\\.|(?!\1)[^\\\n])*)\1(,?)$`,
+          'm'
+        ),
+        (__, _q, brut, fin) => {
+          anciennes.push(brut.replace(/\\(.)/g, '$1'));
+          return proprieteTs(cle, 'description', phrase, fin);
+        }
+      );
+      return `${indent}pwaBaseOptions({\n${nouveau}${indent}})`;
+    }
+  );
+  return { texte, anciennes, manquantes: [] };
 }
 
 /** Dans chaque dictionnaire, les deux phrases qui disent ce qu'est l'app. */
