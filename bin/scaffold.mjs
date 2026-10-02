@@ -18,6 +18,17 @@ export const SQUELETTE = 'pwa-starter-kit';
 /** Son nom affiché, à remplacer lui aussi. */
 export const SQUELETTE_TITRE = 'PWA Starter Kit';
 
+/**
+ * Son nom COURT, le troisième à remplacer : c'est lui qu'on lit sous l'icône
+ * de l'application installée. Android affiche le `short_name` du manifeste,
+ * que `vite.config.ts` passe en `shortName` ; iOS, la balise
+ * `apple-mobile-web-app-title` d'`index.html`. « Starter Kit » n'étant pas
+ * « PWA Starter Kit », le remplacement du nom affiché le laissait passer :
+ * miss-devises, née de `main` le 01/10/2026, s'est installée sous le nom
+ * « Starter Kit ».
+ */
+export const SQUELETTE_NOM_COURT = 'Starter Kit';
+
 /** Ce qu'on ne réécrit jamais : ni binaire, ni verrou, ni historique. */
 const BINAIRE =
   /\.(?:png|jpe?g|gif|webp|ico|woff2?|ttf|otf|riv|pdf|zip|tgz|wasm|mp3|ogg|mp4|webm)$/i;
@@ -330,6 +341,11 @@ export function fichiersTexte(racine) {
  * qu'une laisse une application qui s'appelle correctement dans son URL et
  * « PWA Starter Kit » dans son onglet.
  *
+ * ET UN TROISIÈME, LE NOM COURT (`Starter Kit`), remplacé APRÈS le nom affiché
+ * qui le contient : c'est celui que montre l'icône installée. L'application
+ * le reçoit égal à son nom affiché, comme le socle quand `shortName` manque ;
+ * un nom plus court se choisit ensuite dans `vite.config.ts` et `index.html`.
+ *
  * LA DESCRIPTION, ELLE, N'EST PAS UNE CHAÎNE À REMPLACER : c'est une PLACE. Le
  * squelette se décrit dans `package.json`, dans les balises meta d'`index.html`
  * et dans deux phrases de chaque dictionnaire, et ces textes changent d'une
@@ -371,6 +387,7 @@ export function substituer(racine, { id, titre, description, titrePage }) {
     const avant = readFileSync(abs, 'utf8');
     let apres = avant.split(SQUELETTE).join(id);
     apres = apres.split(SQUELETTE_TITRE).join(titre);
+    apres = apres.split(SQUELETTE_NOM_COURT).join(titre);
     // UN NOM D'UNE AUTRE LONGUEUR DÉSALIGNE LE TABLEAU QUI LE CITE, et
     // `prettier --check` refuse le fichier : l'ADR 0012 du squelette a fait
     // naître toute application engendrée depuis `main` avec une CI rouge.
@@ -433,7 +450,9 @@ export function substituer(racine, { id, titre, description, titrePage }) {
   const restesTitre = [];
   for (const rel of fichiersTexte(racine)) {
     const texte = readFileSync(join(racine, rel), 'utf8');
-    if (texte.includes(SQUELETTE)) restes.push(rel);
+    if (texte.includes(SQUELETTE) || texte.includes(SQUELETTE_NOM_COURT)) {
+      restes.push(rel);
+    }
     if (rel === 'README.md') continue;
     if (retirees.some(a => texte.includes(a))) restesDescription.push(rel);
     if (titresRetires.some(a => texte.includes(a))) restesTitre.push(rel);
