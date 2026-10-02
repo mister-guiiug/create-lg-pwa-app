@@ -174,6 +174,12 @@ jobs:
             echo "::error::vite.config.ts : le nom court n'est pas celui de l'application"
             exit 1
           fi
+          # Depuis pwa-starter-kit#81, le manifeste se décrit aussi : c'est la
+          # phrase de l'application qu'il doit porter, pas celle du squelette.
+          if ! grep -qF "$DESCRIPTION" /tmp/depuis-main-long/vite.config.ts; then
+            echo "::error::vite.config.ts : la description du manifeste n'est pas celle de l'application"
+            exit 1
+          fi
 
       # LES RÈGLES SEO DU SOCLE, PAR SA PROPRE CONSTRUCTION. Depuis le socle
       # 6.21, `pwa-doctor --strict` refuse un titre de moins de 50 caractères

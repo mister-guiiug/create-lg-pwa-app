@@ -81,7 +81,7 @@ create-lg-pwa-app — une application de la famille, en une commande.
   --nom "<nom>"     nom affiché (défaut : déduit de l'id) : lettres, chiffres,
                     espaces, - . et l'apostrophe typographique ’
   --titre "…"       titre de la page, 50 caractères au moins : <title>, og:title
-  --description "…" ce que fait l'app, 70 à 160 caractères : paquet, meta description, accroche (app.tagline)
+  --description "…" ce que fait l'app, 70 à 160 caractères : paquet, meta description, accroche (app.tagline), manifeste
   --from <ref>      branche ou étiquette du squelette (défaut : sa dernière étiquette, sinon main)
   --dir <chemin>    dossier de sortie (défaut : ./<id>)
   --publish         crée le dépôt GitHub, pousse, active Pages (exige gh)
