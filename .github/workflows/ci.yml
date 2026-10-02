@@ -73,6 +73,13 @@ jobs:
             echo "::error::le nom du squelette subsiste dans : $reste"
             exit 1
           fi
+          # Le nom COURT aussi : c'est l'étiquette de l'icône installée.
+          reste=$(grep -rIl 'Starter Kit' /tmp/engendree \
+            --exclude-dir=.git --exclude=README.md || true)
+          if [ -n "$reste" ]; then
+            echo "::error::le nom court du squelette subsiste dans : $reste"
+            exit 1
+          fi
           grep -q '"name": "miss-essai-ci"' /tmp/engendree/package.json
           grep -q "APP_ID = 'miss-essai-ci'" /tmp/engendree/vite.config.ts
           grep -q "APP_ID = 'miss-essai-ci'" /tmp/engendree/src/app/links.ts
@@ -159,6 +166,12 @@ jobs:
           # engendré doit dire de la garder, pas de supprimer l'écran.
           if ! grep -q "l'accroche \`app.tagline\`" /tmp/depuis-main/README.md; then
             echo "::error::README.md : l'accroche de l'accueil n'est pas dite à garder"
+            exit 1
+          fi
+          # Le squelette de main passe `shortName` : c'est le nom qu'Android
+          # affiche sous l'icône. miss-devises en est née « Starter Kit ».
+          if ! grep -q "shortName: 'Miss X'" /tmp/depuis-main/vite.config.ts; then
+            echo "::error::vite.config.ts : le nom court n'est pas celui de l'application"
             exit 1
           fi
 

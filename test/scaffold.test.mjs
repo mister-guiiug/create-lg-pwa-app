@@ -26,6 +26,7 @@ import {
   DESCRIPTION_MIN,
   PORT_SQUELETTE,
   SQUELETTE,
+  SQUELETTE_NOM_COURT,
   SQUELETTE_TITRE,
   TITRE_MIN,
   activerPages,
@@ -85,6 +86,7 @@ const INDEX_HTML = `<!doctype html>
       property="og:description"
       content="${DIT_SQUELETTE.og}"
     />
+    <meta name="apple-mobile-web-app-title" content="${SQUELETTE_NOM_COURT}" />
   </head>
   <body>
     <div id="app"></div>
@@ -149,7 +151,13 @@ function squelette(fn) {
       2
     ),
     'src/app/links.ts': `export const APP_ID = '${SQUELETTE}';`,
-    'vite.config.ts': `const APP_ID = '${SQUELETTE}';`,
+    'vite.config.ts': `const APP_ID = '${SQUELETTE}';
+const pwa = pwaBaseOptions({
+  id: APP_ID,
+  name: '${SQUELETTE_TITRE}',
+  shortName: '${SQUELETTE_NOM_COURT}',
+});
+`,
     'index.html': INDEX_HTML,
     'src/i18n/messages.ts': MESSAGES_TS,
     'docs/adr/0001-routeur.md': `# Décision\n\nValable pour ${SQUELETTE_TITRE}.`,
@@ -221,6 +229,65 @@ test('les DEUX identités sont traitées : l’identifiant et le nom affiché', 
     const adr = readFileSync(join(racine, 'docs/adr/0001-routeur.md'), 'utf8');
     assert.match(adr, /Miss Exemple/);
   });
+});
+
+test('le nom court aussi : c’est lui qu’on lit sous l’icône installée', () => {
+  squelette(racine => {
+    const { restes } = substituer(racine, {
+      id: 'miss-exemple',
+      titre: 'Miss Exemple',
+      description: 'x',
+    });
+
+    // « Starter Kit » n'est pas « PWA Starter Kit » : le remplacement du nom
+    // affiché le laissait passer. Android l'affichait sous l'icône (le
+    // `short_name` du manifeste, tiré de `shortName`), iOS aussi
+    // (`apple-mobile-web-app-title`). Relevé le 02/10/2026 sur miss-devises.
+    const lu = rel => readFileSync(join(racine, rel), 'utf8');
+    assert.match(lu('vite.config.ts'), /shortName: 'Miss Exemple'/);
+    assert.match(lu('vite.config.ts'), /name: 'Miss Exemple'/);
+    assert.match(
+      lu('index.html'),
+      /<meta name="apple-mobile-web-app-title" content="Miss Exemple" \/>/
+    );
+    for (const rel of fichiersTexte(racine)) {
+      assert.equal(lu(rel).includes(SQUELETTE_NOM_COURT), false, rel);
+    }
+    assert.deepEqual(restes, []);
+  });
+});
+
+test('la balise du nom court est rangée comme Prettier la range', async () => {
+  const html = { ...configPrettier, parser: 'html' };
+  // Derrière quatre espaces, la balise tient sur une ligne jusqu'à un nom de
+  // 23 colonnes ; au-delà, un attribut par ligne. La CI l'a relevé sur la
+  // naissance au nom long, rouge à `prettier --check`.
+  const noms = [
+    'Miss X',
+    'Miss Devises',
+    'x'.repeat(23),
+    'x'.repeat(24),
+    'Mister Une Application Au Nom Vraiment Long',
+    // Échappée dans la balise. Un guillemet ou un chevron, eux, casseraient
+    // déjà `og:title`, que le remplacement du nom affiché touche à l'état brut.
+    'R&D Labo',
+  ];
+  for (const nom of noms) {
+    // Le titre de page par défaut, comme la ligne de commande : sans lui,
+    // `og:title` garderait le nom brut, et c'est sa ligne qui déborderait.
+    const lu = squelette(racine => {
+      substituer(racine, {
+        id: 'miss-exemple',
+        titre: nom,
+        description: 'x',
+        titrePage: titreDePageParDefaut(nom),
+      });
+      return readFileSync(join(racine, 'index.html'), 'utf8');
+    });
+    assert.equal(lu, await prettier.format(lu, html), `« ${nom} »`);
+    // Et le nom relu est celui demandé : l'échappement ne l'a pas abîmé.
+    assert.equal(meta(lu, 'apple-mobile-web-app-title'), nom);
+  }
 });
 
 test('le paquet naît en 0.1.0, avec SA description', () => {
