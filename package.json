@@ -12,7 +12,7 @@
     "bin"
   ],
   "engines": {
-    "node": ">=22"
+    "node": ">=22.23.3"
   },
   "scripts": {
     "test": "node --test",
