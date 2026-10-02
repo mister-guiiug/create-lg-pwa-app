@@ -57,6 +57,7 @@ import {
   titreDePageParDefaut,
   titreDepuisId,
   validerId,
+  validerNom,
 } from './scaffold.mjs';
 
 const DEPOT_SQUELETTE = `mister-guiiug/${SQUELETTE}`;
@@ -77,7 +78,8 @@ create-lg-pwa-app — une application de la famille, en une commande.
 
   <id>              nom du dépôt : miss-exemple, mister-exemple
 
-  --nom "<nom>"     nom affiché (défaut : déduit de l'id)
+  --nom "<nom>"     nom affiché (défaut : déduit de l'id) : lettres, chiffres,
+                    espaces, - . et l'apostrophe typographique ’
   --titre "…"       titre de la page, 50 caractères au moins : <title>, og:title
   --description "…" ce que fait l'app, 70 à 160 caractères : paquet, meta description, accroche (app.tagline)
   --from <ref>      branche ou étiquette du squelette (défaut : sa dernière étiquette, sinon main)
@@ -101,6 +103,19 @@ if (verdict.horsConvention) {
 }
 
 const titre = option('nom') ?? titreDepuisId(id);
+// LE NOM AFFICHÉ EST RECOPIÉ TEL QUEL dans du TypeScript, du HTML, du XML et
+// du Markdown : un caractère qu'une de ces syntaxes interprète ferait naître
+// une application illisible. Refusé ici, avant que rien ne soit écrit.
+const verdictNom = validerNom(titre);
+if (!verdictNom.ok) {
+  const origine =
+    option('nom') === undefined ? `nom déduit de « ${id} »` : '--nom';
+  console.error(`✖ ${origine} « ${titre} » : ${verdictNom.raison}`);
+  if (verdictNom.suggestion) {
+    console.error(`  proposé : --nom "${verdictNom.suggestion}"`);
+  }
+  process.exit(1);
+}
 const description = option('description') ?? descriptionParDefaut(titre);
 const titrePage = option('titre') ?? titreDePageParDefaut(titre);
 

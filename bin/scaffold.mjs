@@ -312,8 +312,65 @@ export function controlerTextes({ titrePage, description }) {
 export function titreDepuisId(id) {
   return id
     .split('-')
+    .filter(Boolean)
     .map(mot => mot.charAt(0).toUpperCase() + mot.slice(1))
     .join(' ');
+}
+
+/**
+ * Ce qu'un nom affiché peut porter : lettres (accents compris, combinants
+ * aussi), chiffres, espace ordinaire, trait d'union, point, et l'apostrophe
+ * typographique.
+ */
+const NOM_PERMIS = /^[\p{L}\p{M}\p{Nd} .’-]$/u;
+
+/**
+ * Un nom affiché valable, contrôlé avant tout téléchargement, comme
+ * l'identifiant.
+ *
+ * LE NOM EST RECOPIÉ TEL QUEL À SES PLACES DU SQUELETTE, dans cinq syntaxes :
+ * chaînes TypeScript (`vite.config.ts`, `src/i18n/messages.ts`,
+ * `e2e/smoke.spec.ts`), HTML (`index.html`), XML (l'`aria-label` de
+ * `public/favicon.svg`) et Markdown (`content/pages/`, texte de lien compris).
+ * Chacune a ses caractères spéciaux et sa mise en page Prettier, et un
+ * échappement par syntaxe raterait la prochaine place que le squelette
+ * ajoutera. Le générateur n'accepte donc que des caractères inertes dans
+ * toutes : le remplacement reste juste partout, aujourd'hui et demain.
+ *
+ * L'APOSTROPHE DROITE EST LE SEUL CAS RÉEL, et la typographie française a déjà
+ * la réponse : l'apostrophe typographique (’), que le refus propose. Relevé le
+ * 03/10/2026 : avec « L'Atelier », `name: 'L'Atelier'` rendait trois fichiers
+ * illisibles, et le générateur ne disait rien.
+ *
+ * @returns {{ ok: true } | { ok: false, raison: string, suggestion?: string }}
+ */
+export function validerNom(nom) {
+  if (!/[\p{L}\p{Nd}]/u.test(nom)) {
+    return {
+      ok: false,
+      raison: 'un nom affiché porte au moins une lettre ou un chiffre',
+    };
+  }
+  if (nom !== nom.trim() || nom.includes('  ')) {
+    return {
+      ok: false,
+      raison:
+        "pas d'espace au début ni à la fin d'un nom affiché, ni deux à la suite",
+    };
+  }
+  const refuses = [...new Set([...nom].filter(c => !NOM_PERMIS.test(c)))];
+  if (!refuses.length) return { ok: true };
+  const montres = refuses.map(c =>
+    /\s/.test(c) ? JSON.stringify(c) : `« ${c} »`
+  );
+  const verdict = {
+    ok: false,
+    raison: `il porte ${montres.join(', ')}, or un nom affiché ne porte que des lettres, des chiffres, des espaces, des traits d'union, des points et l'apostrophe typographique (’)`,
+  };
+  const propose = nom.replaceAll("'", '’');
+  return propose !== nom && validerNom(propose).ok
+    ? { ...verdict, suggestion: propose }
+    : verdict;
 }
 
 /** Les fichiers texte d'une arborescence, chemins relatifs. */

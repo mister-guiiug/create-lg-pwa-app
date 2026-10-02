@@ -6,6 +6,8 @@
 // n'échoue ; on s'en aperçoit en production.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import {
   existsSync,
   mkdirSync,
@@ -46,6 +48,7 @@ import {
   titreDePageParDefaut,
   titreDepuisId,
   validerId,
+  validerNom,
 } from '../bin/scaffold.mjs';
 
 /**
@@ -160,7 +163,7 @@ const pwa = pwaBaseOptions({
 `,
     'index.html': INDEX_HTML,
     'src/i18n/messages.ts': MESSAGES_TS,
-    'docs/adr/0001-routeur.md': `# Décision\n\nValable pour ${SQUELETTE_TITRE}.`,
+    'docs/adr/0001-routeur.md': `# Décision\n\nValable pour ${SQUELETTE_TITRE}.\n`,
     'public/favicon.svg': '<svg />',
   };
   for (const [rel, contenu] of Object.entries(fichiers)) {
@@ -191,6 +194,128 @@ test('un identifiant se valide, et la convention se signale sans s’imposer', (
 test('le nom affiché se déduit de l’identifiant', () => {
   assert.equal(titreDepuisId('miss-exemple'), 'Miss Exemple');
   assert.equal(titreDepuisId('mister-cim10'), 'Mister Cim10');
+  // Un tiret doublé ou final ne fait ni double espace ni espace final.
+  assert.equal(titreDepuisId('miss--exemple-'), 'Miss Exemple');
+});
+
+/** Les noms que le générateur accepte : ceux de la famille, et ses marges. */
+const NOMS_PERMIS = [
+  'Miss Devises',
+  'Mister Settle',
+  'L’Atelier',
+  'Miss Sudoku-Express',
+  'Mister J.O.',
+  'Élodie Ça Va',
+  'Miss 2048',
+  // Un accent combinant : « é » écrit en deux points de code.
+  'Miss Café',
+];
+
+test('un nom affiché ne porte que des caractères inertes à toutes ses places', () => {
+  for (const nom of NOMS_PERMIS) {
+    assert.deepEqual(validerNom(nom), { ok: true }, nom);
+  }
+  // L'apostrophe droite, seul cas réel : le refus propose la typographique.
+  const apostrophe = validerNom("L'Atelier");
+  assert.equal(apostrophe.ok, false);
+  assert.match(apostrophe.raison, /« ' »/);
+  assert.equal(apostrophe.suggestion, 'L’Atelier');
+  for (const nom of [
+    'Il dit "oui"',
+    'R&D',
+    'Miss <b>',
+    'Miss A|B',
+    'Miss *Star*',
+    'Miss _Star_',
+    'Miss [X]',
+    'Miss A\\B',
+    'Miss `x`',
+    'Miss ${x}',
+    // Une espace insécable : seule l'espace ordinaire est permise.
+    'Miss\u00a0X',
+    'Miss\nX',
+  ]) {
+    const v = validerNom(nom);
+    assert.equal(v.ok, false, nom);
+    // Aucune proposition quand l'apostrophe n'est pas en cause.
+    assert.equal(v.suggestion, undefined, nom);
+  }
+  for (const nom of ['', ' ', ' Miss X', 'Miss X ', 'Miss  X', '-', '’']) {
+    assert.equal(validerNom(nom).ok, false, JSON.stringify(nom));
+  }
+});
+
+test('la ligne de commande refuse le nom AVANT tout téléchargement', () => {
+  const dossier = join(mkdtempSync(join(tmpdir(), 'lg-pwa-nom-')), 'app');
+  try {
+    const r = spawnSync(
+      process.execPath,
+      [
+        fileURLToPath(new URL('../bin/create-lg-pwa-app.mjs', import.meta.url)),
+        'miss-essai',
+        '--nom',
+        "L'Atelier",
+        '--no-install',
+        '--dir',
+        dossier,
+      ],
+      { encoding: 'utf8' }
+    );
+    assert.equal(r.status, 1, r.stderr);
+    assert.match(r.stderr, /--nom « L'Atelier »/);
+    assert.match(r.stderr, /proposé : --nom "L’Atelier"/);
+    // Rien n'est écrit : le refus précède le téléchargement du squelette.
+    assert.equal(existsSync(dossier), false);
+  } finally {
+    rmSync(dirname(dossier), { recursive: true, force: true });
+  }
+});
+
+test('le nom déduit d’un identifiant valable est toujours permis', () => {
+  for (const id of [
+    'miss-exemple',
+    'mister-a1',
+    'x',
+    'miss-2048',
+    'miss--x-',
+  ]) {
+    assert.equal(validerId(id).ok, true, id);
+    assert.deepEqual(validerNom(titreDepuisId(id)), { ok: true }, id);
+  }
+});
+
+test('un nom permis donne des fichiers que Prettier lit et laisse tels quels', async () => {
+  const formats = {
+    'index.html': { ...configPrettier, parser: 'html' },
+    'src/i18n/messages.ts': { ...configPrettier, parser: 'typescript' },
+    'vite.config.ts': { ...configPrettier, parser: 'typescript' },
+    'docs/adr/0001-routeur.md': { ...configPrettier, parser: 'markdown' },
+  };
+  for (const nom of NOMS_PERMIS) {
+    const fichiers = squelette(racine => {
+      substituer(racine, {
+        id: 'miss-exemple',
+        titre: nom,
+        description: 'x',
+        titrePage: titreDePageParDefaut(nom),
+      });
+      return Object.fromEntries(
+        Object.keys(formats).map(rel => [
+          rel,
+          readFileSync(join(racine, rel), 'utf8'),
+        ])
+      );
+    });
+    for (const [rel, texte] of Object.entries(fichiers)) {
+      // Un nom qui casserait la syntaxe ferait échouer `format` lui-même.
+      assert.equal(
+        texte,
+        await prettier.format(texte, formats[rel]),
+        `${nom} : ${rel}`
+      );
+      assert.ok(texte.includes(nom), `${nom} : ${rel}`);
+    }
+  }
 });
 
 test('la substitution ne laisse AUCUNE trace du squelette', () => {
@@ -268,8 +393,9 @@ test('la balise du nom court est rangée comme Prettier la range', async () => {
     'x'.repeat(23),
     'x'.repeat(24),
     'Mister Une Application Au Nom Vraiment Long',
-    // Échappée dans la balise. Un guillemet ou un chevron, eux, casseraient
-    // déjà `og:title`, que le remplacement du nom affiché touche à l'état brut.
+    // Échappée dans la balise. La ligne de commande refuse ce nom en amont
+    // (`validerNom`) ; la balise reste échappée par sûreté, et un guillemet ou
+    // un chevron casseraient de toute façon `og:title`, touché à l'état brut.
     'R&D Labo',
   ];
   for (const nom of noms) {
