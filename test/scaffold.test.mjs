@@ -257,6 +257,39 @@ test('le nom court aussi : c’est lui qu’on lit sous l’icône installée', 
   });
 });
 
+test('la balise du nom court est rangée comme Prettier la range', async () => {
+  const html = { ...configPrettier, parser: 'html' };
+  // Derrière quatre espaces, la balise tient sur une ligne jusqu'à un nom de
+  // 23 colonnes ; au-delà, un attribut par ligne. La CI l'a relevé sur la
+  // naissance au nom long, rouge à `prettier --check`.
+  const noms = [
+    'Miss X',
+    'Miss Devises',
+    'x'.repeat(23),
+    'x'.repeat(24),
+    'Mister Une Application Au Nom Vraiment Long',
+    // Échappée dans la balise. Un guillemet ou un chevron, eux, casseraient
+    // déjà `og:title`, que le remplacement du nom affiché touche à l'état brut.
+    'R&D Labo',
+  ];
+  for (const nom of noms) {
+    // Le titre de page par défaut, comme la ligne de commande : sans lui,
+    // `og:title` garderait le nom brut, et c'est sa ligne qui déborderait.
+    const lu = squelette(racine => {
+      substituer(racine, {
+        id: 'miss-exemple',
+        titre: nom,
+        description: 'x',
+        titrePage: titreDePageParDefaut(nom),
+      });
+      return readFileSync(join(racine, 'index.html'), 'utf8');
+    });
+    assert.equal(lu, await prettier.format(lu, html), `« ${nom} »`);
+    // Et le nom relu est celui demandé : l'échappement ne l'a pas abîmé.
+    assert.equal(meta(lu, 'apple-mobile-web-app-title'), nom);
+  }
+});
+
 test('le paquet naît en 0.1.0, avec SA description', () => {
   squelette(racine => {
     substituer(racine, {

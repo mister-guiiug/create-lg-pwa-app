@@ -387,6 +387,7 @@ export function substituer(racine, { id, titre, description, titrePage }) {
     const avant = readFileSync(abs, 'utf8');
     let apres = avant.split(SQUELETTE).join(id);
     apres = apres.split(SQUELETTE_TITRE).join(titre);
+    if (rel === 'index.html') apres = reecrireNomCourt(apres, titre);
     apres = apres.split(SQUELETTE_NOM_COURT).join(titre);
     // UN NOM D'UNE AUTRE LONGUEUR DÉSALIGNE LE TABLEAU QUI LE CITE, et
     // `prettier --check` refuse le fichier : l'ADR 0012 du squelette a fait
@@ -642,6 +643,24 @@ function baliseTitre(indent, texte) {
   }
   return [`${indent}<title>`, ...lignes, `${indent}</title>`].join('\n');
 }
+
+/**
+ * La balise du nom court, `apple-mobile-web-app-title`, réécrite et non
+ * remplacée : un nom de plus de 23 colonnes ne tient plus sur sa ligne, et
+ * Prettier la range alors un attribut par ligne. Le remplacement brut a fait
+ * rougir la naissance au nom long ; il laissait aussi un guillemet ou une
+ * esperluette sans échappement.
+ */
+function reecrireNomCourt(html, nom) {
+  return html.replace(BALISE_NOM_COURT, (_, indent) =>
+    baliseMeta(indent, [
+      'name="apple-mobile-web-app-title"',
+      `content=${attributHtml(nom)}`,
+    ])
+  );
+}
+const BALISE_NOM_COURT =
+  /^([ \t]*)<meta\s+name="apple-mobile-web-app-title"\s+content=(?:"[^"]*"|'[^']*')\s*\/>/m;
 
 /** Une balise sur une ligne si elle tient, sinon un attribut par ligne. */
 function baliseMeta(indent, attributs) {
