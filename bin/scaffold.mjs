@@ -226,6 +226,38 @@ export function activerPages(api, depot) {
   }
 }
 
+/**
+ * Les alertes de vulnérabilité Dependabot, sur le dépôt qui vient de naître.
+ *
+ * GITHUB NE LES ALLUME PAS SEUL. Le parc les a activées dépôt par dépôt le
+ * 13/09/2026 ; une application née après n'en avait pas. miss-devises
+ * (01/10/2026) portait ainsi les mêmes dompurify et serialize-javascript
+ * vulnérables que ses sœurs, sans une seule alerte : relevé le 03/10/2026.
+ *
+ * Le PUT répond 204, puis la relecture fait foi : `GET` rend 204 quand les
+ * alertes sont actives, 404 sinon.
+ *
+ * @param {(methode: string, chemin: string, champs?: Record<string, string>) => { statut: number, corps: any }} api
+ *   Un appel à l'API GitHub, comme pour {@link activerPages}.
+ * @param {string} depot  `propriétaire/nom`.
+ */
+export function activerAlertes(api, depot) {
+  const chemin = `repos/${depot}/vulnerability-alerts`;
+  const activation = api('PUT', chemin);
+  if (activation.statut !== 204) {
+    throw new Error(
+      `alertes Dependabot, activation : HTTP ${activation.statut}` +
+        `${activation.corps?.message ? ` (${activation.corps.message})` : ''}`
+    );
+  }
+  const relu = api('GET', chemin);
+  if (relu.statut !== 204) {
+    throw new Error(
+      `alertes Dependabot : la relecture rend HTTP ${relu.statut}, 204 attendu`
+    );
+  }
+}
+
 // ── Les règles SEO/GEO/AEO du parc ─────────────────────────────────────────
 //
 // `pwa-doctor --strict` termine la construction de l'application engendrée, et

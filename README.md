@@ -86,7 +86,7 @@ fait pas de bruit, il ne fait rien.
 | Port           | le prochain port de développement libre du catalogue, dans `.claude/launch.json` et `vite.config.ts`, à l'installation seulement ; `supabase/config.toml` garde 5240                                                                                                                                                                                                                                                                                                                                                |
 | Construction   | `npm run build` (budget de poids et `pwa-doctor --strict`) sur l'application engendrée, avant toute publication                                                                                                                                                                                                                                                                                                                                                                                                     |
 | Premier commit | conventionnel, sur `main`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `--publish`    | dépôt public, poussée, **Pages créées puis passées en workflow par un PUT**, relues, `homepage` et sujets sur la fiche du dépôt                                                                                                                                                                                                                                                                                                                                                                                     |
+| `--publish`    | dépôt public, poussée, **Pages créées puis passées en workflow par un PUT**, relues, **alertes Dependabot activées**, `homepage` et sujets sur la fiche du dépôt                                                                                                                                                                                                                                                                                                                                                    |
 
 Les deux dernières lignes sont sa vraie valeur. Substituer un nom prend dix
 lignes ; ce que personne n'avait automatisé, ce sont les gestes d'après et
@@ -107,6 +107,12 @@ leurs pièges :
   sans Pages le 01/10/2026. Le générateur crée donc le site s'il manque, le
   passe en workflow par un PUT, puis relit `build_type`, et s'arrête s'il ne
   vaut pas `workflow`.
+- **Les alertes Dependabot ne s'allument pas seules.** Le parc les a
+  activées dépôt par dépôt le 13/09/2026, et un dépôt né après n'en a pas :
+  miss-devises a porté les mêmes dépendances vulnérables que ses sœurs sans
+  une seule alerte, jusqu'au 03/10/2026. Le générateur les active par un
+  PUT, puis relit le réglage. Un échec ne défait pas la naissance, mais il se
+  dit, avec la commande qui le répare.
 
 ## La description
 
@@ -204,7 +210,8 @@ le range.
 --description "…" ce que fait l'app, 70 à 160 caractères : paquet, meta description, accroche de l'accueil, manifeste
 --from <ref>      branche ou étiquette du squelette (défaut : sa dernière étiquette, sinon main)
 --dir <chemin>    dossier de sortie (défaut : ./<id>)
---publish         crée le dépôt GitHub, pousse, active Pages (exige gh)
+--publish         crée le dépôt GitHub, pousse, active Pages et les alertes
+                  Dependabot (exige gh)
 --no-install      n'installe pas les dépendances (donc ne construit pas)
 --no-build        installe mais ne construit pas
 ```

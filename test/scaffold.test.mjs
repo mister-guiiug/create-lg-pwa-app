@@ -31,6 +31,7 @@ import {
   SQUELETTE_NOM_COURT,
   SQUELETTE_TITRE,
   TITRE_MIN,
+  activerAlertes,
   activerPages,
   ceQueLAccueilGarde,
   choisirPort,
@@ -1142,6 +1143,38 @@ test('Pages : un échec se dit, et un site relu hors workflow aussi', () => {
       { statut: 200, corps: { build_type: 'legacy' } }
     ),
     /build_type vaut « legacy ».*gh api -X PUT repos\/mister-guiiug\/miss-exemple\/pages -f build_type=workflow/
+  );
+});
+
+// ── Les alertes Dependabot ────────────────────────────────────────────────
+
+const ALERTES = `repos/${DEPOT}/vulnerability-alerts`;
+
+test('alertes Dependabot sur un dépôt neuf : activées, puis relues', () => {
+  // miss-devises est née le 01/10/2026 sans elles : ses dépendances
+  // vulnérables n'ont été signalées nulle part. Le PUT et la relecture
+  // répondent 204, sans corps (relevé le 03/10/2026).
+  const { api, appels } = fausseApi(
+    { statut: 204, corps: null },
+    { statut: 204, corps: null }
+  );
+  activerAlertes(api, DEPOT);
+  assert.deepEqual(appels, [`PUT ${ALERTES}`, `GET ${ALERTES}`]);
+});
+
+test('alertes Dependabot : un refus se dit, et une relecture en 404 aussi', () => {
+  const activer =
+    (...reponses) =>
+    () =>
+      activerAlertes(fausseApi(...reponses).api, DEPOT);
+  assert.throws(
+    activer({ statut: 403, corps: { message: 'Must have admin rights' } }),
+    /activation : HTTP 403 \(Must have admin rights\)/
+  );
+  // 404 en lecture : les alertes sont ÉTEINTES, même après un PUT accepté.
+  assert.throws(
+    activer({ statut: 204, corps: null }, { statut: 404, corps: null }),
+    /relecture rend HTTP 404, 204 attendu/
   );
 });
 

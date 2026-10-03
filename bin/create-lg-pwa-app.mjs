@@ -43,6 +43,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   SQUELETTE,
+  activerAlertes,
   activerPages,
   ceQueLAccueilGarde,
   choisirPort,
@@ -433,6 +434,20 @@ try {
     // ordre.
     console.log('· Pages en mode workflow');
     activerPages(ghApi, `mister-guiiug/${id}`);
+
+    // ALERTES DE VULNÉRABILITÉ : GitHub ne les allume pas sur un dépôt neuf,
+    // et miss-devises a vécu sans elles. Un échec n'annule pas une naissance
+    // réussie, mais il se dit, avec la commande qui le répare.
+    console.log('· alertes Dependabot');
+    try {
+      activerAlertes(ghApi, `mister-guiiug/${id}`);
+    } catch (cause) {
+      console.warn(
+        `⚠ ${cause.message.split('\n')[0]}\n` +
+          '  Sans elles, aucune dépendance vulnérable ne sera signalée. À reprendre :\n' +
+          `  gh api -X PUT repos/mister-guiiug/${id}/vulnerability-alerts`
+      );
+    }
 
     // L'adresse est connue avant le premier déploiement : elle va sur la
     // fiche du dépôt, avec les deux sujets qui rangent l'application dans la
