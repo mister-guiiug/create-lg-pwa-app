@@ -1,4 +1,13 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["github>mister-guiiug/dev-pwa-config//renovate/default.json"]
+  "extends": ["github>mister-guiiug/dev-pwa-config//renovate/default.json"],
+  "packageRules": [
+    {
+      "description": "La CI éprouve le générateur sur Node 22, le plancher de `engines` et de la stack cible : `npx github:…` doit marcher chez qui n'a que ce Node-là. Elle était sur « 22 » depuis la naissance du dépôt ; les correctifs 22.x passent (22.23.3 le 03/10/2026), la majeure se décide avec le plancher, à la main. Le tableau du 04/10/2026 proposait 24.21.0.",
+      "matchManagers": ["github-actions"],
+      "matchDepNames": ["node"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
+  ]
 }
