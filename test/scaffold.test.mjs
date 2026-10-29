@@ -690,11 +690,25 @@ function manifeste(vite) {
   return m ? runInNewContext(m[1]) : undefined;
 }
 
+/**
+ * Le HTML sans ses commentaires. Une seule passe en laisserait : retirer
+ * `<!---->` de `<!<!---->--` reforme `<!--`. On recommence jusqu'à ce que
+ * plus rien ne change (CodeQL js/incomplete-multi-character-sanitization).
+ */
+function sansCommentaires(html) {
+  let avant;
+  do {
+    avant = html;
+    html = html.replace(/<!--[\s\S]*?-->/g, '');
+  } while (html !== avant);
+  return html;
+}
+
 /** La valeur d'une balise meta, décodée comme un navigateur la lit. */
 function meta(html, cle) {
   const m = new RegExp(
     String.raw`<meta\s+(?:name|property)="${cle}"\s+content=(?:"([^"]*)"|'([^']*)')\s*/>`
-  ).exec(html.replace(/<!--[\s\S]*?-->/g, ''));
+  ).exec(sansCommentaires(html));
   return (m?.[1] ?? m?.[2])?.replace(
     /&(quot|apos|amp|lt|gt);/g,
     (_, e) => ({ quot: '"', apos: "'", amp: '&', lt: '<', gt: '>' })[e]
@@ -1288,7 +1302,7 @@ function naitre({ titre, titrePage, preparer = () => {} }) {
 /** Le titre comme un navigateur le lit : espaces resserrées, entités décodées. */
 function titreLu(html) {
   return /<title>([\s\S]*?)<\/title>/
-    .exec(html.replace(/<!--[\s\S]*?-->/g, ''))?.[1]
+    .exec(sansCommentaires(html))?.[1]
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/&(amp|lt|gt);/g, (_, e) => ({ amp: '&', lt: '<', gt: '>' })[e]);
