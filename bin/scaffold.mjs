@@ -996,8 +996,9 @@ function reecrireTitre(html, titrePage) {
  * clés deux colonnes plus loin. La propriété est réécrite comme Prettier la
  * range, sur sa ligne ou repliée sous sa clé.
  *
- * LA PLACE EST FACULTATIVE : l'étiquette `v1.2.0`, celle que le générateur tire
- * par défaut, ne passe pas de description. Son absence ne se signale donc pas.
+ * LA PLACE EST FACULTATIVE : l'étiquette `v1.2.0`, que le générateur tirait
+ * par défaut jusqu'au 05/11/2026 (`--from v1.2.0` la redonne), ne passe pas de
+ * description. Son absence ne se signale donc pas.
  */
 function reecrireManifeste(source, phrase) {
   const anciennes = [];
