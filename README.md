@@ -14,7 +14,7 @@ npx --allow-git=root github:mister-guiiug/create-lg-pwa-app miss-exemple --publi
 paquet : voir [plus bas](#--allow-gitroot-depuis-npm-12).
 
 **Sans `--from`, l'application part de la dernière étiquette du squelette,
-`v1.2.0` du 06/09/2026, et non de la pointe de `main`**, que seul
+`v1.3.0` du 05/11/2026, et non de la pointe de `main`**, que seul
 `--from main` donne.
 
 ## Pourquoi `npx github:` et pas un paquet publié
@@ -61,11 +61,14 @@ et reste conforme au parc. Seuls le README engendré et `.claude/launch.json`
 sont écrits par le générateur lui-même.
 
 **Mais il le tire à sa dernière étiquette, pas à la pointe que cette CI
-éprouve.** Sans `--from`, c'est `v1.2.0`, posée le 06/09/2026, soixante-six
-commits derrière `main` au 28/09 : socle 4 et workflows `@v4`, sans
+éprouve.** Sans `--from`, c'est `v1.3.0`, posée le 05/11/2026 sur la pointe du
+jour : socle 6.31.0, workflows `@v6`, démarrage hors ligne éprouvé, session de
+CE projet lue hors ligne. La précédente, `v1.2.0` du 06/09/2026, avait fini
+cent quatre commits derrière `main` : socle 4 et workflows `@v4`, sans
 l'annulation des suppressions, la suppression de compte, la file hors ligne ni
-la mesure d'audience du squelette actuel, et avec le pied de page encore dans
-la coquille. `--from main` part de la pointe.
+la mesure d'audience, et avec le pied de page encore dans la coquille. **Une
+étiquette vieillit en silence** : la reposer quand le squelette gagne ce
+qu'une application neuve doit recevoir. `--from main` part de la pointe.
 
 Un générateur qui embarque ses gabarits est un **troisième endroit où la même
 chose vieillit**, après la bibliothèque et le squelette. Le parc en a déjà fait
@@ -77,7 +80,7 @@ fait pas de bruit, il ne fait rien.
 
 | Étape          | Ce qu'elle règle                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Téléchargement | l'archive du squelette à sa **dernière étiquette**, `v1.2.0` depuis le 06/09/2026 (ou à la référence demandée, `--from main` pour la pointe), sans son historique                                                                                                                                                                                                                                                                                                                                                   |
+| Téléchargement | l'archive du squelette à sa **dernière étiquette**, `v1.3.0` depuis le 05/11/2026 (ou à la référence demandée, `--from main` pour la pointe), sans son historique                                                                                                                                                                                                                                                                                                                                                   |
 | Identité       | l'identifiant, le nom affiché **et** le nom court « Starter Kit », qui devient le nom affiché : c'est l'étiquette de l'icône installée (`shortName` de `vite.config.ts` pour Android, `apple-mobile-web-app-title` pour iOS) ; tableaux Markdown réalignés ; un contrôle refuse toute trace de l'identifiant et du nom court ; le nom affiché est refusé AVANT téléchargement s'il porte un caractère que TypeScript, HTML, XML ou Markdown interprète (l'apostrophe droite : le refus propose la typographique, ’) |
 | Description    | `--description`, 70 caractères au moins, à chaque place où le squelette se décrit, description du manifeste comprise (`vite.config.ts`, depuis pwa-starter-kit#81) ; un contrôle refuse qu'une de ses phrases subsiste                                                                                                                                                                                                                                                                                              |
 | Titre          | `--titre`, 50 caractères au moins, dans `<title>` et `og:title` ; un contrôle refuse que le titre du squelette subsiste                                                                                                                                                                                                                                                                                                                                                                                             |
