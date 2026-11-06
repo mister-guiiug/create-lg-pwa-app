@@ -9,8 +9,15 @@
  * peut casser en silence, et c'est donc la seule qu'il faut pouvoir éprouver à
  * chaque commit.
  */
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import {
+  existsSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { join, relative, resolve, sep } from 'node:path';
 
 /** Le squelette dont tout part. */
 export const SQUELETTE = 'pwa-starter-kit';
@@ -420,6 +427,125 @@ export function fichiersTexte(racine) {
   };
   visiter(racine);
   return out;
+}
+
+// ── Ce que le squelette garde pour lui ─────────────────────────────────────
+//
+// LE GÉNÉRATEUR RECOPIE TOUT L'ARBRE, et n'y change que les noms. Ce qui ne
+// parle que du squelette naissait donc dans chaque application : miss-arcade
+// et miss-holi-voyage (31/10/2026) servaient en accueil « C'est le squelette
+// des applications de la famille », et publiaient mot pour mot ses trois
+// guides — neuf pages pour trois textes, chacune se déclarant l'originale.
+//
+// LA LISTE N'EST PAS ICI : le squelette la déclare dans `squelette.propres` de
+// son `package.json`, à côté des fichiers qu'elle décrit, et son propre test
+// échoue quand une page publiée n'y est pas. Une liste tenue dans ce dépôt
+// serait périmée au premier guide ajouté là-bas, sans que rien ne le dise.
+
+/**
+ * La liste des étiquettes antérieures à la déclaration (`v1.3.0` et avant),
+ * qui ne savent pas dire ce qui leur est propre. Elle ne vieillit pas : une
+ * étiquette publiée ne bouge plus. Toute étiquette qui déclare l'ignore.
+ */
+export const PROPRES_AVANT_DECLARATION = Object.freeze({
+  propres: Object.freeze(['content/accueil.md', 'content/pages/']),
+  refusALaNaissance: Object.freeze({
+    'seo-content-pages':
+      'née du générateur sans page de contenu : celles du squelette ne parlaient que de lui. Écrire la première dans content/pages/, puis retirer cette ligne.',
+  }),
+});
+
+/**
+ * La déclaration du squelette, vérifiée. Un chemin qui sortirait de l'arbre
+ * engendré, ou qui le désignerait tout entier, est refusé AVANT tout
+ * effacement : `rmSync` n'a pas de second avis.
+ *
+ * @param {unknown} declaration  `squelette` du `package.json` du squelette.
+ * @param {string} racine        L'arbre engendré.
+ * @returns {{ propres: string[], refusALaNaissance: Record<string, string> }}
+ */
+export function lireDeclaration(declaration, racine) {
+  const refus = raison => {
+    throw new Error(`squelette.${raison} dans le package.json du squelette`);
+  };
+  if (!declaration || typeof declaration !== 'object') {
+    refus('n’est pas un objet');
+  }
+  const { propres, refusALaNaissance = {} } = declaration;
+  if (!Array.isArray(propres)) refus('propres n’est pas une liste');
+  const base = resolve(racine);
+  for (const p of propres) {
+    if (
+      typeof p !== 'string' ||
+      // Absolu, lecteur Windows, antislash, ou segment `.` / `..`.
+      /^\/|^[a-z]:|\\|(^|\/)\.\.?(\/|$)/i.test(p) ||
+      !resolve(base, p).startsWith(base + sep)
+    ) {
+      refus(
+        `propres porte ${JSON.stringify(p)}, qui n’est pas un chemin sous le dépôt`
+      );
+    }
+  }
+  if (
+    !refusALaNaissance ||
+    typeof refusALaNaissance !== 'object' ||
+    Array.isArray(refusALaNaissance)
+  ) {
+    refus('refusALaNaissance n’est pas un objet');
+  }
+  for (const [id, raison] of Object.entries(refusALaNaissance)) {
+    // UNE RAISON VIDE N'EST PAS UN REFUS : pwa-doctor l'ignore, et le premier
+    // build échouerait sur la dette qu'elle croyait excuser.
+    if (typeof raison !== 'string' || !raison.trim()) {
+      refus(`refusALaNaissance.${id} n’a pas de raison`);
+    }
+  }
+  return { propres, refusALaNaissance };
+}
+
+/**
+ * Retire de l'arbre engendré ce que le squelette garde pour lui, et pose à la
+ * place les refus qu'il déclare pour la naissance.
+ *
+ * POURQUOI UN REFUS. Sans page de contenu, `pwa-doctor --strict` relève la
+ * dette `seo-content-pages`, et `npm run build` — que le générateur lance, et
+ * la CI de l'application après lui — échoue. Les guides recopiés taisaient
+ * cette dette en mentant ; le refus la montre (`– refus`, avec sa raison), et
+ * se signale de lui-même (`refus-perime-…`) dès que la première page existe.
+ * Il n'est posé que si quelque chose a été retiré.
+ *
+ * `squelette` disparaît du `package.json` engendré : il ne décrit pas
+ * l'application.
+ *
+ * @param {string} racine  L'arbre engendré, avant la substitution.
+ * @returns {{ declares: boolean, retires: string[], refus: Record<string, string> }}
+ *   la déclaration était-elle là ; les entrées effectivement retirées ; les
+ *   refus posés.
+ */
+export function retirerPropres(racine) {
+  const chemin = join(racine, 'package.json');
+  const paquet = JSON.parse(readFileSync(chemin, 'utf8'));
+  const declares = paquet.squelette !== undefined;
+  const { propres, refusALaNaissance } = declares
+    ? lireDeclaration(paquet.squelette, racine)
+    : PROPRES_AVANT_DECLARATION;
+  const retires = [];
+  for (const p of propres) {
+    const abs = join(racine, p);
+    if (!existsSync(abs)) continue;
+    rmSync(abs, { recursive: true, force: true });
+    retires.push(p);
+  }
+  delete paquet.squelette;
+  const refus = retires.length ? { ...refusALaNaissance } : {};
+  if (Object.keys(refus).length) {
+    paquet.pwaDoctor = {
+      ...paquet.pwaDoctor,
+      refus: { ...paquet.pwaDoctor?.refus, ...refus },
+    };
+  }
+  writeFileSync(chemin, JSON.stringify(paquet, null, 2) + '\n');
+  return { declares, retires, refus };
 }
 
 /**
@@ -1127,6 +1253,7 @@ export function readme({
   titre,
   description,
   accueil = ceQueLAccueilGarde(),
+  propres = { retires: [], refus: {} },
 }) {
   const garde = [
     accueil.accroche &&
@@ -1142,6 +1269,21 @@ export function readme({
 ${garde.join('\n')}`
     : `3. écrire le métier dans \`src/features/\`, et **supprimer \`src/features/home/\`**,
    la fonctionnalité d'exemple — elle est là pour ça ;`;
+  const refus = Object.keys(propres.refus ?? {});
+  const contenu = propres.retires?.length
+    ? `
+7. écrire ce que le socle sert aux robots : le texte d'accueil
+   (\`content/accueil.md\`) et une première page qui répond à une vraie
+   recherche (\`content/pages/<slug>.md\`). Ceux du squelette ne parlaient que
+   de lui, et le générateur ne les a pas recopiés (${propres.retires.map(p => `\`${p}\``).join(', ')}).${
+     refus.length
+       ? `
+   En attendant, \`pwaDoctor.refus\` de \`package.json\` porte ${refus.map(r => `\`${r}\``).join(', ')} :
+   \`pwa-doctor\` le signale de lui-même quand il n'excuse plus rien, et la
+   ligne se retire alors.`
+       : ''
+   }`
+    : '';
   return `# ${id}
 
 ${description}
@@ -1188,7 +1330,7 @@ ${exemple}
 6. relire le titre de la page (\`<title>\` et \`og:title\` d'\`index.html\`, que
    le socle sert en h1 aux robots) et la description — la meta
    d'\`index.html\`, \`app.tagline\` et \`about.what\` de \`src/i18n/messages.ts\` —
-   et traduire l'anglais, marqué \`TODO traduire\`.
+   et traduire l'anglais, marqué \`TODO traduire\`${contenu ? ' ;' : '.'}${contenu}
 
 ## Les décisions
 

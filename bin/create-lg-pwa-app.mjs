@@ -54,6 +54,7 @@ import {
   lireReponseGh,
   readme,
   remplacerPort,
+  retirerPropres,
   substituer,
   titreDePageParDefaut,
   titreDepuisId,
@@ -221,6 +222,7 @@ const archive = join(travail, 'squelette.tar.gz');
 let port = null;
 let aTraduire = [];
 let accueil = ceQueLAccueilGarde();
+let propres = { declares: false, retires: [], refus: {} };
 try {
   console.log('· téléchargement du squelette');
   const url = `https://codeload.github.com/${DEPOT_SQUELETTE}/tar.gz/${ref}`;
@@ -256,6 +258,16 @@ try {
   // où `%TEMP%` est sur `C:` et les dépôts souvent ailleurs. `rename` y échoue
   // en `EXDEV: cross-device link not permitted`.
   cpSync(extrait, cible, { recursive: true });
+
+  // ── 1 bis. Ce que le squelette garde pour lui ───────────────────────────
+  //
+  // AVANT LA SUBSTITUTION : ses guides et son texte d'accueil parlent de lui,
+  // et le renommage les rendait faux au lieu de les retirer — l'accueil de
+  // miss-arcade a dit « C'est le squelette des applications de la famille ».
+  propres = retirerPropres(cible);
+  console.log(
+    `· ${propres.retires.length} entrée(s) propre(s) au squelette écartée(s)${propres.declares ? '' : ' (liste des étiquettes antérieures à la déclaration)'}`
+  );
 
   // ── 2. L'identité ────────────────────────────────────────────────────────
   console.log('· substitution de l’identité');
@@ -306,7 +318,7 @@ try {
   );
   writeFileSync(
     join(cible, 'README.md'),
-    readme({ id, titre, description, accueil })
+    readme({ id, titre, description, accueil, propres })
   );
   console.log(`  ${fichiers.length} fichier(s) réécrit(s)`);
 
@@ -521,6 +533,14 @@ Ce qui reste, et que ce générateur ne fait pas :
      }${
        aTraduire.length
          ? `\n     — l'anglais porte le texte français, marqué « TODO traduire »`
+         : ''
+     }${
+       propres.retires.length
+         ? `\n  6. écrire le texte d'accueil (content/accueil.md) et une première page\n     de contenu (content/pages/) : ceux du squelette ne parlaient que de lui${
+             Object.keys(propres.refus).length
+               ? `\n     — pwaDoctor.refus porte ${Object.keys(propres.refus).join(', ')} d'ici là`
+               : ''
+           }`
          : ''
      }
 
