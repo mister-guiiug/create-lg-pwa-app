@@ -27,6 +27,7 @@ import {
   DESCRIPTION_MAX,
   DESCRIPTION_MIN,
   PORT_SQUELETTE,
+  PROPRES_AVANT_DECLARATION,
   SQUELETTE,
   SQUELETTE_NOM_COURT,
   SQUELETTE_TITRE,
@@ -40,11 +41,13 @@ import {
   descriptionParDefaut,
   fichiersTexte,
   launchJson,
+  lireDeclaration,
   lireReponseGh,
   rangerAppels,
   readme,
   realignerTableaux,
   remplacerPort,
+  retirerPropres,
   substituer,
   titreDePageParDefaut,
   titreDepuisId,
@@ -560,6 +563,184 @@ test('le README garde l’accroche et le pied de page quand l’accueil les port
         JSON.stringify({ accroche, piedDePage })
       );
     }
+  }
+});
+
+/** Ce que le squelette garde pour lui, à l'image de sa déclaration réelle. */
+const CONTENU_DU_SQUELETTE = {
+  'content/accueil.md': `## Pour qui\n\nC'est le squelette des applications de la famille.\n`,
+  'content/pages/creer-une-pwa.md': `---\ntitle: Créer une PWA avec ${SQUELETTE_TITRE}\n---\n`,
+  'content/pages/en/build-a-pwa.md': `---\ntitle: Build a PWA\n---\n`,
+  'src/squelette.test.ts': `// la liste des fichiers propres de ${SQUELETTE}\n`,
+};
+const REFUS_DU_SQUELETTE = {
+  'seo-content-pages':
+    'née du générateur sans page de contenu : écrire la première, puis retirer cette ligne.',
+};
+
+/** Réécrit le package.json du faux squelette, et y pose ce contenu. */
+function avecContenu(racine, champs) {
+  const paquet = JSON.parse(readFileSync(join(racine, 'package.json'), 'utf8'));
+  ecrire(
+    racine,
+    'package.json',
+    JSON.stringify({ ...paquet, ...champs }, null, 2) + '\n'
+  );
+  for (const [rel, contenu] of Object.entries(CONTENU_DU_SQUELETTE)) {
+    ecrire(racine, rel, contenu);
+  }
+}
+
+const lirePaquet = racine =>
+  JSON.parse(readFileSync(join(racine, 'package.json'), 'utf8'));
+
+test('ce que le squelette déclare propre ne naît pas, et son refus le remplace', () => {
+  squelette(racine => {
+    avecContenu(racine, {
+      squelette: {
+        _pourquoi: 'ce qui ne parle que du squelette',
+        propres: [
+          'content/accueil.md',
+          'content/pages/',
+          'src/squelette.test.ts',
+        ],
+        refusALaNaissance: REFUS_DU_SQUELETTE,
+      },
+      // Un refus que le squelette porte déjà pour lui-même : il survit.
+      pwaDoctor: { refus: { 'wf-lighthouse': 'déjà là' } },
+    });
+
+    const r = retirerPropres(racine);
+
+    assert.equal(r.declares, true);
+    assert.deepEqual(r.retires, [
+      'content/accueil.md',
+      'content/pages/',
+      'src/squelette.test.ts',
+    ]);
+    for (const rel of Object.keys(CONTENU_DU_SQUELETTE)) {
+      assert.equal(existsSync(join(racine, rel)), false, rel);
+    }
+    // Le reste de l'arbre, et les décisions, naissent bien.
+    assert.ok(existsSync(join(racine, 'docs/adr/0001-routeur.md')));
+    assert.ok(existsSync(join(racine, 'content')));
+
+    const paquet = lirePaquet(racine);
+    // La déclaration ne décrit pas l'application : elle disparaît.
+    assert.equal(paquet.squelette, undefined);
+    assert.deepEqual(paquet.pwaDoctor.refus, {
+      'wf-lighthouse': 'déjà là',
+      ...REFUS_DU_SQUELETTE,
+    });
+    assert.deepEqual(r.refus, REFUS_DU_SQUELETTE);
+    // Rangé comme Prettier range un package.json : la première CI le relit.
+    assert.equal(
+      readFileSync(join(racine, 'package.json'), 'utf8'),
+      JSON.stringify(paquet, null, 2) + '\n'
+    );
+  });
+});
+
+test('une étiquette qui ne déclare rien : la liste d’avant la déclaration', () => {
+  squelette(racine => {
+    avecContenu(racine, {});
+
+    const r = retirerPropres(racine);
+
+    assert.equal(r.declares, false);
+    assert.deepEqual(r.retires, [...PROPRES_AVANT_DECLARATION.propres]);
+    assert.equal(existsSync(join(racine, 'content/accueil.md')), false);
+    assert.equal(existsSync(join(racine, 'content/pages')), false);
+    // Ce que `v1.3.0` ne déclarait pas n'est pas deviné : il reste, et la
+    // substitution le traite comme avant.
+    assert.ok(existsSync(join(racine, 'src/squelette.test.ts')));
+    assert.deepEqual(
+      lirePaquet(racine).pwaDoctor.refus,
+      PROPRES_AVANT_DECLARATION.refusALaNaissance
+    );
+  });
+});
+
+test('rien à retirer : aucun refus n’est posé', () => {
+  // `v1.2.0` n'avait ni pages de contenu ni texte d'accueil.
+  squelette(racine => {
+    const r = retirerPropres(racine);
+    assert.deepEqual(r, { declares: false, retires: [], refus: {} });
+    assert.equal(lirePaquet(racine).pwaDoctor, undefined);
+  });
+});
+
+test('une déclaration qui sortirait de l’arbre est refusée AVANT tout effacement', () => {
+  const fausses = [
+    { propres: ['content/pages/', '../dehors'] },
+    { propres: ['content/pages/', '/etc'] },
+    { propres: ['content/pages/', 'C:/Windows'] },
+    { propres: ['content/pages/', '.'] },
+    { propres: ['content/pages/', './'] },
+    { propres: ['content/pages/', ''] },
+    { propres: ['content/pages/', 'content\\accueil.md'] },
+    { propres: ['content/pages/', 'content/../..'] },
+    { propres: ['content/pages/', 42] },
+    { propres: 'content/pages/' },
+    { refusALaNaissance: {} },
+    {
+      propres: ['content/pages/'],
+      refusALaNaissance: { 'seo-content-pages': '  ' },
+    },
+    { propres: ['content/pages/'], refusALaNaissance: ['seo-content-pages'] },
+  ];
+  for (const declaration of fausses) {
+    squelette(racine => {
+      avecContenu(racine, { squelette: declaration });
+      assert.throws(
+        () => retirerPropres(racine),
+        /squelette\..* dans le package\.json du squelette/,
+        JSON.stringify(declaration)
+      );
+      // Rien n'a été effacé : la vérification précède le premier `rmSync`.
+      assert.ok(existsSync(join(racine, 'content/pages/creer-une-pwa.md')));
+      assert.ok(lirePaquet(racine).squelette);
+    });
+  }
+  // La même vérification, appelée seule : un chemin sous le dépôt passe.
+  squelette(racine => {
+    assert.deepEqual(
+      lireDeclaration({ propres: ['.github/x.yml', 'a/b/'] }, racine),
+      { propres: ['.github/x.yml', 'a/b/'], refusALaNaissance: {} }
+    );
+  });
+});
+
+test('le README dit d’écrire l’accueil et la première page, et nomme le refus', async () => {
+  const pour = propres =>
+    readme({
+      id: 'miss-exemple',
+      titre: 'Miss Exemple',
+      description: 'Une application d’exemple.',
+      propres,
+    });
+
+  const avec = pour({
+    retires: ['content/accueil.md', 'content/pages/'],
+    refus: REFUS_DU_SQUELETTE,
+  });
+  assert.match(avec, /`content\/accueil\.md`/);
+  assert.match(avec, /`content\/pages\/<slug>\.md`/);
+  assert.match(avec, /porte `seo-content-pages`/);
+
+  // Retiré sans refus : la page se demande, aucun refus n'est nommé.
+  const sansRefus = pour({ retires: ['content/accueil.md'], refus: {} });
+  assert.match(sansRefus, /`content\/accueil\.md`/);
+  assert.doesNotMatch(sansRefus, /pwaDoctor\.refus/);
+
+  // Rien de retiré (`v1.2.0`) : la liste s'arrête au sixième geste.
+  const rien = pour({ retires: [], refus: {} });
+  assert.doesNotMatch(rien, /content\/accueil/);
+  assert.match(rien, /marqué `TODO traduire`\.\n/);
+  assert.equal(rien, pour(undefined));
+
+  for (const texte of [avec, sansRefus, rien]) {
+    assert.equal(texte, await prettier.format(texte, MARKDOWN));
   }
 });
 

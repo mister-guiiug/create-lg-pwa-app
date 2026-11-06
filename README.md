@@ -128,10 +128,25 @@ naître chaque application en se présentant comme le squelette, **auprès des
 moteurs d'abord** : la meta description est aussi ce que le socle sert aux
 robots sans JavaScript et ce qu'il met dans les données structurées.
 
-Depuis `v1.2.0`, le squelette se décrit aussi dans ses pages de contenu
-(`content/pages/`) et dans `public/og-image.jpg`, que le générateur ne touche
-pas : une application engendrée depuis `main` s'y présente encore comme le
-squelette. Son titre de page, lui, est traité : voir plus bas.
+Le squelette se décrit aussi dans ses pages de contenu (`content/pages/`) et
+dans son texte d'accueil (`content/accueil.md`), que le socle sert aux robots.
+Renommés, ils mentaient : miss-arcade, née le 31/10/2026, disait en accueil
+« C'est le squelette des applications de la famille », et publiait mot pour mot
+ses trois guides. **Ils ne naissent plus.** Le squelette déclare ce qui ne
+parle que de lui dans `squelette.propres` de son `package.json`, à côté des
+fichiers, et son test échoue quand une page publiée n'y est pas ; le générateur
+le retire avant la substitution, et `squelette` disparaît du paquet engendré.
+Les étiquettes antérieures à la déclaration (`v1.3.0` comprise) reçoivent une
+liste figée, `PROPRES_AVANT_DECLARATION`.
+
+L'application naît donc sans page de contenu, et `pwa-doctor --strict`
+relèverait la dette `seo-content-pages` à son premier build. Le refus que le
+squelette déclare pour la naissance (`squelette.refusALaNaissance`) est posé
+dans `pwaDoctor.refus` : le docteur l'affiche avec sa raison, et le signale de
+lui-même (`refus-perime-seo-content-pages`) dès que la première page existe.
+
+`public/og-image.jpg` présente encore le squelette, et reste à remplacer à la
+main. Son titre de page, lui, est traité : voir plus bas.
 
 Le générateur ne connaît pas ces phrases, qui changent d'une étiquette du
 squelette à l'autre : il réécrit ce qui **occupe ces places**, retient ce
