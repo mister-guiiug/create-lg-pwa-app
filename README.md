@@ -14,7 +14,7 @@ npx --allow-git=root github:mister-guiiug/create-lg-pwa-app miss-exemple --publi
 paquet : voir [plus bas](#--allow-gitroot-depuis-npm-12).
 
 **Sans `--from`, l'application part de la dernière étiquette du squelette,
-`v1.4.0` du 06/11/2026, et non de la pointe de `main`**, que seul
+`v1.5.0` du 21/11/2026, et non de la pointe de `main`**, que seul
 `--from main` donne.
 
 ## Pourquoi `npx github:` et pas un paquet publié
@@ -61,12 +61,15 @@ et reste conforme au parc. Seuls le README engendré et `.claude/launch.json`
 sont écrits par le générateur lui-même.
 
 **Mais il le tire à sa dernière étiquette, pas à la pointe que cette CI
-éprouve.** Sans `--from`, c'est `v1.4.0`, posée le 06/11/2026 sur la pointe du
-jour : socle 6.32.1, workflows `@v6`, Sentry branché pour de vrai (l'appel
-d'avant ne chargeait rien), thème appliqué avant le premier rendu, axe sur les
-quatre écrans en clair et en sombre, et la première étiquette qui déclare ce
-qui ne parle que du squelette (`squelette.propres`, lu depuis #27). `v1.3.0`,
-du 05/11/2026, n'avait rien de tout cela. `v1.2.0`, du 06/09/2026, avait fini
+éprouve.** Sans `--from`, c'est `v1.5.0`, posée le 21/11/2026 sur la pointe du
+jour : socle 6.37.0, et les libellés des composants du socle en fr et en
+seulement (`react/i18n-lite`, 163,7 kB préchargés au lieu de 173,4, depuis
+pwa-starter-kit#132), minimatch et glob sous surcharge (CVE-2026-118764).
+`v1.4.0`, du 06/11/2026, avait apporté Sentry branché pour de vrai (l'appel
+d'avant ne chargeait rien), le thème appliqué avant le premier rendu, axe sur
+les quatre écrans en clair et en sombre, et la déclaration de ce qui ne parle
+que du squelette (`squelette.propres`, lu depuis #27). `v1.3.0`, du
+05/11/2026, n'avait rien de tout cela. `v1.2.0`, du 06/09/2026, avait fini
 cent quatre commits derrière `main` : socle 4 et workflows `@v4`, sans
 l'annulation des suppressions, la suppression de compte, la file hors ligne ni
 la mesure d'audience, et avec le pied de page encore dans la coquille. **Une
@@ -83,7 +86,7 @@ fait pas de bruit, il ne fait rien.
 
 | Étape          | Ce qu'elle règle                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Téléchargement | l'archive du squelette à sa **dernière étiquette**, `v1.4.0` depuis le 06/11/2026 (ou à la référence demandée, `--from main` pour la pointe), sans son historique                                                                                                                                                                                                                                                                                                                                                   |
+| Téléchargement | l'archive du squelette à sa **dernière étiquette**, `v1.5.0` depuis le 21/11/2026 (ou à la référence demandée, `--from main` pour la pointe), sans son historique                                                                                                                                                                                                                                                                                                                                                   |
 | Identité       | l'identifiant, le nom affiché **et** le nom court « Starter Kit », qui devient le nom affiché : c'est l'étiquette de l'icône installée (`shortName` de `vite.config.ts` pour Android, `apple-mobile-web-app-title` pour iOS) ; tableaux Markdown réalignés ; un contrôle refuse toute trace de l'identifiant et du nom court ; le nom affiché est refusé AVANT téléchargement s'il porte un caractère que TypeScript, HTML, XML ou Markdown interprète (l'apostrophe droite : le refus propose la typographique, ’) |
 | Description    | `--description`, 70 caractères au moins, à chaque place où le squelette se décrit, description du manifeste comprise (`vite.config.ts`, depuis pwa-starter-kit#81) ; un contrôle refuse qu'une de ses phrases subsiste                                                                                                                                                                                                                                                                                              |
 | Titre          | `--titre`, 50 caractères au moins, dans `<title>` et `og:title` ; un contrôle refuse que le titre du squelette subsiste                                                                                                                                                                                                                                                                                                                                                                                             |
