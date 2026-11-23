@@ -50,6 +50,7 @@ import {
   choisirRef,
   controlerTextes,
   descriptionParDefaut,
+  keepAliveAAppliquer,
   launchJson,
   lireReponseGh,
   readme,
@@ -504,6 +505,10 @@ const generiques = {
     .join(' ')
 ];
 
+// Rappelée seulement si le squelette tiré la livre encore à la main : depuis
+// pwa-starter-kit#138, elle naît par une migration (`keepAliveAAppliquer`).
+const keepAliveManuel = keepAliveAAppliquer(cible);
+
 console.log(`
 ✔ ${cible}${port ? `  (port de développement : ${port})` : ''}
 
@@ -551,9 +556,13 @@ pièce manque en silence (PARAMETRAGE.md du socle) :
     (gh variable set), SUPABASE_PROJECT_ID aussi ;
   · SUPABASE_ACCESS_TOKEN et SUPABASE_DB_PASSWORD en secrets, par le
     propriétaire ;
-  · la table keep_alive (supabase/keep-alive.sql), sinon le ping répond 404
+${
+  keepAliveManuel
+    ? `  · la table keep_alive (supabase/keep-alive.sql), sinon le ping répond 404
     et le projet Free s'endort au 7ᵉ jour ;
-  · côté projet : site_url et la liste d'URL de retour (localhost:3000 seul
+`
+    : ''
+}  · côté projet : site_url et la liste d'URL de retour (localhost:3000 seul
     à la création), et le hook « Custom Access Token » pour les rôles.
 
 Aucun secret n'a été posé, et c'est délibéré : un générateur qui écrit des

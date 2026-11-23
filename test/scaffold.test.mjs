@@ -40,6 +40,7 @@ import {
   controlerTextes,
   descriptionParDefaut,
   fichiersTexte,
+  keepAliveAAppliquer,
   launchJson,
   lireDeclaration,
   lireReponseGh,
@@ -1625,5 +1626,20 @@ test('rangerAppels ne touche que les appels à une seule chaîne qui porte le no
     "    // voir toHaveText('Miss X')\n    name: 'Miss X',",
   ]) {
     assert.equal(rangerAppels(intact, 'Miss X'), intact);
+  }
+});
+
+test('le rappel de la table keep_alive suit l’arbre engendré, pas une version', () => {
+  const racine = mkdtempSync(join(tmpdir(), 'keep-alive-'));
+  try {
+    // Le squelette depuis pwa-starter-kit#138 : la table naît par migration.
+    mkdirSync(join(racine, 'supabase/migrations'), { recursive: true });
+    writeFileSync(join(racine, 'supabase/migrations/0006_keep_alive.sql'), '');
+    assert.equal(keepAliveAAppliquer(racine), false);
+    // Une étiquette jusqu'à v1.5.0 (ou `--from`) : le script reste à appliquer.
+    writeFileSync(join(racine, 'supabase/keep-alive.sql'), '');
+    assert.equal(keepAliveAAppliquer(racine), true);
+  } finally {
+    rmSync(racine, { recursive: true, force: true });
   }
 });

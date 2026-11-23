@@ -1342,3 +1342,22 @@ Une application qui s'en écarte le fait, et l'écrit.
 MIT — voir [LICENSE](./LICENSE).
 `;
 }
+
+/**
+ * Le script de la table `keep_alive` est-il encore à appliquer à la main ?
+ *
+ * Jusqu'à l'étiquette v1.5.0, le squelette livrait `supabase/keep-alive.sql`
+ * hors de `migrations/`, et le message final le rappelait. Ce rappel n'a pas
+ * suffi : dans miss-bonus-quest, la table n'a jamais été créée, et le premier
+ * keep-alive (23/11/2026) a rendu 404. Depuis pwa-starter-kit#138, elle naît
+ * par la migration `0006_keep_alive.sql`.
+ *
+ * Le rappel suit donc l'arbre engendré, pas une version : le générateur tire
+ * la dernière étiquette, ou celle que `--from` désigne, et une ancienne
+ * étiquette livre encore le script.
+ *
+ * @param {string} racine  L'arbre engendré.
+ */
+export function keepAliveAAppliquer(racine) {
+  return existsSync(join(racine, 'supabase/keep-alive.sql'));
+}

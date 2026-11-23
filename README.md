@@ -213,8 +213,10 @@ le range.
 - **Poser un secret.** Un générateur qui écrit des secrets est un générateur
   qui les connaît. Il imprime ce qui reste à poser, et, pour une application
   qui prendra un projet Supabase, la liste de ce qui manque en silence
-  (variables, secrets, table `keep_alive`, adresse de retour du lien, hook de
-  rôle). Il y manque encore les lignes `build-env` de `deploy.yml` que
+  (variables, secrets, adresse de retour du lien, hook de rôle). La table
+  `keep_alive` n'y figure que si le squelette tiré la livre encore en script à
+  appliquer à la main (jusqu'à v1.5.0) : depuis pwa-starter-kit#138, elle naît
+  par une migration. Il y manque encore les lignes `build-env` de `deploy.yml` que
   `PARAMETRAGE.md` du socle exige : `pwa-deploy.yml` n'injecte que ce qu'on
   lui passe, et sans elles le site publié reste en local.
 - **Protéger la branche.** Cela vit dans le socle
