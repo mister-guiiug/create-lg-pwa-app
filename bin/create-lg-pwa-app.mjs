@@ -53,6 +53,7 @@ import {
   keepAliveAAppliquer,
   launchJson,
   lireReponseGh,
+  noterHeritage,
   readme,
   remplacerPort,
   retirerPropres,
@@ -311,6 +312,16 @@ try {
     );
   }
   aTraduire = descriptions.aTraduire;
+
+  // ── 2 bis. Les visuels du squelette ─────────────────────────────────────
+  //
+  // APRÈS LA SUBSTITUTION, qui réécrit les fichiers texte (le favicon est un
+  // SVG) : l'empreinte doit décrire l'état de la naissance. Voir
+  // `noterHeritage`.
+  const { heritage } = noterHeritage(cible);
+  console.log(
+    `· ${Object.keys(heritage).length} visuel(s) du squelette noté(s) : pwa-doctor les nommera tant qu’ils ne sont pas refaits`
+  );
   // Ce que l'accueil garde quand l'exemple part se LIT dans l'écran engendré :
   // l'accroche et le pied de page n'y sont que depuis pwa-starter-kit#67.
   const ecranAccueil = join(cible, 'src/features/home/HomeScreen.tsx');
@@ -519,7 +530,9 @@ Ce qui reste, et que ce générateur ne fait pas :
      (il lit le compte, ce dépôt y est déjà)
   2. inscrire l'application dans apps-catalog.js du socle, par une PR,
      sans quoi elle n'apparaît pas chez ses sœurs${port ? ` — avec devPort: ${port}` : ''}
-  3. remplacer public/favicon.svg puis : npm run icons
+  3. remplacer public/favicon.svg puis : npm run icons ; refaire les
+     captures (npm run screenshots) puis l'image de partage (npx pwa-og-image)
+     — pwa-doctor nomme les visuels du squelette restés tels quels
   4. ${
     accueil.accroche || accueil.piedDePage
       ? `remplacer l'exemple de src/features/home/, en gardant sur l'accueil\n     ${[

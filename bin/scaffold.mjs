@@ -9,6 +9,7 @@
  * peut casser en silence, et c'est donc la seule qu'il faut pouvoir éprouver à
  * chaque commit.
  */
+import { createHash } from 'node:crypto';
 import {
   existsSync,
   readFileSync,
@@ -546,6 +547,88 @@ export function retirerPropres(racine) {
   }
   writeFileSync(chemin, JSON.stringify(paquet, null, 2) + '\n');
   return { declares, retires, refus };
+}
+
+// ── Les visuels du squelette ────────────────────────────────────────────────
+//
+// ILS NAISSENT, ET L'APPLICATION DOIT LES REFAIRE : favicon, icônes, captures
+// du manifeste, image de partage. Recopiés, ils rendent le premier build
+// complet ; mais rien ne rappelait de les refaire. Relevé du 24/11/2026 :
+// miss-arcade, miss-bonus-quest et miss-holi-voyage servaient l'image de
+// partage du squelette (« PWA Starter Kit » sur la carte du hub et dans tout
+// aperçu de lien), miss-bonus-quest et mister-contrib ses captures, des
+// semaines après leur naissance.
+//
+// LA NAISSANCE NOTE LEURS EMPREINTES dans `pwaDoctor.heritage`, et
+// `pwa-doctor` nomme à chaque build ceux qui sont encore identiques
+// (`herite-du-squelette`). Le refus motivé posé ici garde le premier build
+// vert sans taire la liste, et se dit périmé quand le dernier est refait.
+//
+// CES CHEMINS SONT CEUX QU'ÉCRIVENT LES OUTILS DU SOCLE (`pwa-icons`,
+// `pwa-screenshots`, `pwa-og-image`), pas un contenu du squelette : c'est
+// pourquoi la liste vit ici, et non dans `squelette.propres`. Un chemin absent
+// de l'étiquette tirée est simplement sauté.
+
+/** Les visuels à refaire ; un chemin finissant par `/` vaut pour son dossier. */
+export const VISUELS_DU_SQUELETTE = Object.freeze([
+  'public/favicon.svg',
+  'public/icons/',
+  'public/og-image.jpg',
+  'public/og-image.png',
+  'public/screenshots/',
+]);
+
+/** Le refus posé à la naissance sur `herite-du-squelette`. */
+export const REFUS_HERITAGE =
+  'née du générateur avec les visuels du squelette (favicon, icônes, captures, image de partage) : pwa-doctor nomme ceux qui restent. Les refaire, puis retirer cette ligne.';
+
+/**
+ * Note l'empreinte SHA-256 de chaque visuel recopié dans
+ * `pwaDoctor.heritage`, et pose le refus de la naissance. À appeler APRÈS la
+ * substitution : c'est l'état de la naissance que l'empreinte doit décrire.
+ *
+ * @param {string} racine  L'arbre engendré.
+ * @param {readonly string[]} [visuels]
+ * @returns {{ heritage: Record<string, string>, refus: Record<string, string> }}
+ *   les empreintes notées ; le refus posé (vide si rien n'est hérité, ou si
+ *   un refus du même nom était déjà là).
+ */
+export function noterHeritage(racine, visuels = VISUELS_DU_SQUELETTE) {
+  const fichiers = [];
+  const parcourir = rel => {
+    const abs = join(racine, rel);
+    if (!existsSync(abs)) return;
+    if (statSync(abs).isDirectory()) {
+      for (const nom of readdirSync(abs)) {
+        parcourir(`${rel.replace(/\/$/, '')}/${nom}`);
+      }
+    } else {
+      fichiers.push(rel);
+    }
+  };
+  for (const visuel of visuels) parcourir(visuel);
+  const heritage = Object.fromEntries(
+    [...new Set(fichiers)].sort().map(rel => [
+      rel,
+      createHash('sha256')
+        .update(readFileSync(join(racine, rel)))
+        .digest('hex'),
+    ])
+  );
+  if (!Object.keys(heritage).length) return { heritage, refus: {} };
+
+  const chemin = join(racine, 'package.json');
+  const paquet = JSON.parse(readFileSync(chemin, 'utf8'));
+  const refus = paquet.pwaDoctor?.refus?.['herite-du-squelette']
+    ? {}
+    : { 'herite-du-squelette': REFUS_HERITAGE };
+  paquet.pwaDoctor = {
+    ...paquet.pwaDoctor,
+    refus: { ...paquet.pwaDoctor?.refus, ...refus },
+    heritage,
+  };
+  writeFileSync(chemin, JSON.stringify(paquet, null, 2) + '\n');
+  return { heritage, refus };
 }
 
 /**
@@ -1321,7 +1404,10 @@ il échoue à la moindre dette de conformité au parc.
 ## Ce qui reste à faire
 
 1. remplacer \`public/favicon.svg\`, puis \`npm run icons\` ;
-2. régénérer les captures du manifeste : \`npm run screenshots\` ;
+2. refaire les captures du manifeste (\`npm run screenshots\`), puis l'image
+   de partage (\`npx pwa-og-image\`) : celles du squelette le montrent, lui.
+   \`pwa-doctor\` nomme sous \`herite-du-squelette\` chaque visuel encore
+   identique à celui de la naissance, icônes comprises ;
 ${exemple}
 4. ajuster la palette dans \`src/index.css\` et les couleurs de \`vite.config.ts\` ;
 5. si l'application a un backend : poser \`VITE_SUPABASE_URL\` et

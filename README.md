@@ -151,8 +151,22 @@ squelette déclare pour la naissance (`squelette.refusALaNaissance`) est posé
 dans `pwaDoctor.refus` : le docteur l'affiche avec sa raison, et le signale de
 lui-même (`refus-perime-seo-content-pages`) dès que la première page existe.
 
-`public/og-image.jpg` présente encore le squelette, et reste à remplacer à la
-main. Son titre de page, lui, est traité : voir plus bas.
+**Les visuels du squelette naissent, et se signalent tant qu'ils restent.**
+Le favicon, les icônes, les captures du manifeste et l'image de partage sont
+recopiés, pour que le premier build soit complet ; c'est à l'application de
+les refaire. Rien ne le rappelait : le 24/11/2026, miss-arcade,
+miss-bonus-quest et miss-holi-voyage servaient encore l'image du squelette
+(« PWA Starter Kit » sur la carte du hub et dans tout aperçu de lien),
+miss-bonus-quest et mister-contrib ses captures. La naissance note donc
+l'empreinte SHA-256 de chacun dans `pwaDoctor.heritage`, et `pwa-doctor`
+(dev-pwa-config 6.41.0 et suivantes) nomme à chaque build ceux qui sont
+encore identiques, sous `herite-du-squelette`. Un refus motivé posé à la
+naissance garde le premier build vert sans taire la liste ; il se dit périmé
+quand le dernier visuel est refait. Les chemins (`VISUELS_DU_SQUELETTE`) sont
+ceux des outils du socle (`pwa-icons`, `pwa-screenshots`, `pwa-og-image`),
+d'où leur place ici plutôt que dans `squelette.propres`.
+
+Le titre de la page, lui, est traité : voir plus bas.
 
 Le générateur ne connaît pas ces phrases, qui changent d'une étiquette du
 squelette à l'autre : il réécrit ce qui **occupe ces places**, retient ce
