@@ -7,6 +7,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import {
   existsSync,
@@ -28,10 +29,12 @@ import {
   DESCRIPTION_MIN,
   PORT_SQUELETTE,
   PROPRES_AVANT_DECLARATION,
+  REFUS_HERITAGE,
   SQUELETTE,
   SQUELETTE_NOM_COURT,
   SQUELETTE_TITRE,
   TITRE_MIN,
+  VISUELS_DU_SQUELETTE,
   activerAlertes,
   activerPages,
   ceQueLAccueilGarde,
@@ -44,6 +47,7 @@ import {
   launchJson,
   lireDeclaration,
   lireReponseGh,
+  noterHeritage,
   rangerAppels,
   readme,
   realignerTableaux,
@@ -710,6 +714,91 @@ test('une déclaration qui sortirait de l’arbre est refusée AVANT tout efface
       { propres: ['.github/x.yml', 'a/b/'], refusALaNaissance: {} }
     );
   });
+});
+
+const sha256 = texte => createHash('sha256').update(texte).digest('hex');
+
+test('les visuels du squelette : leurs empreintes notées, et le refus de la naissance', () => {
+  squelette(racine => {
+    ecrire(racine, 'public/icons/icon-192.png', 'icône 192');
+    ecrire(racine, 'public/icons/apple-touch-icon.png', 'icône apple');
+    ecrire(racine, 'public/og-image.jpg', 'image de partage');
+    ecrire(racine, 'public/screenshots/narrow.png', 'capture narrow');
+    ecrire(racine, 'public/screenshots/wide.png', 'capture wide');
+    ecrire(racine, 'public/robots.txt', 'User-agent: *');
+    avecContenu(racine, {
+      pwaDoctor: { refus: { 'wf-lighthouse': 'déjà là' } },
+    });
+
+    const r = noterHeritage(racine);
+
+    // Tous les visuels, triés ; rien d'autre (robots.txt n'est pas un visuel).
+    assert.deepEqual(r.heritage, {
+      'public/favicon.svg': sha256('<svg />'),
+      'public/icons/apple-touch-icon.png': sha256('icône apple'),
+      'public/icons/icon-192.png': sha256('icône 192'),
+      'public/og-image.jpg': sha256('image de partage'),
+      'public/screenshots/narrow.png': sha256('capture narrow'),
+      'public/screenshots/wide.png': sha256('capture wide'),
+    });
+    assert.deepEqual(r.refus, { 'herite-du-squelette': REFUS_HERITAGE });
+
+    const paquet = lirePaquet(racine);
+    assert.deepEqual(paquet.pwaDoctor.heritage, r.heritage);
+    // Le refus déjà là survit, celui de la naissance s'y ajoute.
+    assert.deepEqual(paquet.pwaDoctor.refus, {
+      'wf-lighthouse': 'déjà là',
+      'herite-du-squelette': REFUS_HERITAGE,
+    });
+    // Rangé comme Prettier range un package.json : la première CI le relit.
+    assert.equal(
+      readFileSync(join(racine, 'package.json'), 'utf8'),
+      JSON.stringify(paquet, null, 2) + '\n'
+    );
+    // Les chemins sont ceux des outils du socle, sans rien d'autre.
+    assert.deepEqual(
+      [...VISUELS_DU_SQUELETTE],
+      [
+        'public/favicon.svg',
+        'public/icons/',
+        'public/og-image.jpg',
+        'public/og-image.png',
+        'public/screenshots/',
+      ]
+    );
+  });
+});
+
+test('un refus du même nom déjà déclaré n’est pas réécrit ; rien d’hérité, rien de posé', () => {
+  squelette(racine => {
+    avecContenu(racine, {
+      pwaDoctor: { refus: { 'herite-du-squelette': 'raison du squelette' } },
+    });
+    const r = noterHeritage(racine);
+    assert.deepEqual(r.refus, {});
+    assert.equal(
+      lirePaquet(racine).pwaDoctor.refus['herite-du-squelette'],
+      'raison du squelette'
+    );
+    assert.deepEqual(Object.keys(r.heritage), ['public/favicon.svg']);
+  });
+  squelette(racine => {
+    rmSync(join(racine, 'public'), { recursive: true, force: true });
+    assert.deepEqual(noterHeritage(racine), { heritage: {}, refus: {} });
+    assert.equal(lirePaquet(racine).pwaDoctor, undefined);
+  });
+});
+
+test('le README nomme les captures, l’image de partage et le contrôle qui les suit', async () => {
+  const texte = readme({
+    id: 'miss-exemple',
+    titre: 'Miss Exemple',
+    description: 'Une application d’exemple.',
+  });
+  assert.match(texte, /`npm run screenshots`/);
+  assert.match(texte, /`npx pwa-og-image`/);
+  assert.match(texte, /`herite-du-squelette`/);
+  assert.equal(texte, await prettier.format(texte, MARKDOWN));
 });
 
 test('le README dit d’écrire l’accueil et la première page, et nomme le refus', async () => {
